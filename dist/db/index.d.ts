@@ -62,6 +62,18 @@ export declare class DatabaseManager {
     getContentByHash(_hash: string): ContentPool | undefined;
     deleteOldContent(daysOld: number): number;
     /**
+     * 获取最近指定小时内的内容
+     */
+    getRecentContents(hours: number): ContentPool[];
+    /**
+     * 批量获取内容
+     */
+    getContentsByIds(ids: number[]): ContentPool[];
+    /**
+     * 更新内容的 embedding 向量
+     */
+    updateContentEmbedding(id: number, vector: string): void;
+    /**
      * 推荐记录相关操作
      */
     insertRecommendation(recommendation: Recommendation): number;

@@ -91,6 +91,42 @@ export class DatabaseManager {
         return result.changes;
     }
     /**
+     * 获取最近指定小时内的内容
+     */
+    getRecentContents(hours) {
+        const stmt = this.db.prepare(`
+      SELECT * FROM content_pool
+      WHERE collected_at >= datetime('now', '-' || ? || ' hours')
+      ORDER BY collected_at DESC
+    `);
+        return stmt.all(hours);
+    }
+    /**
+     * 批量获取内容
+     */
+    getContentsByIds(ids) {
+        if (ids.length === 0)
+            return [];
+        const placeholders = ids.map(() => '?').join(',');
+        const stmt = this.db.prepare(`
+      SELECT * FROM content_pool
+      WHERE id IN (${placeholders})
+    `);
+        return stmt.all(...ids);
+    }
+    /**
+     * 更新内容的 embedding 向量
+     */
+    updateContentEmbedding(id, vector) {
+        const stmt = this.db.prepare(`
+      UPDATE content_pool
+      SET embedding_vector = ?
+      WHERE id = ?
+    `);
+        stmt.run(vector, id);
+        logger.debug(`Content ${id} embedding updated`);
+    }
+    /**
      * 推荐记录相关操作
      */
     insertRecommendation(recommendation) {
