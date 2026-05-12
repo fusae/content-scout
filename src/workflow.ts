@@ -43,15 +43,21 @@ async function runCompleteWorkflow() {
 
   // 初始化组件
   const db = new DatabaseManager(config.dbPath);
-  const embeddingClient = new EmbeddingClient(config.openai.apiKey);
+  const embeddingClient = new EmbeddingClient(
+    config.embedding.apiKey,
+    config.embedding.baseURL,
+    config.embedding.model
+  );
   const deepseekClient = new DeepSeekClient(config.deepseek.apiKey, config.deepseek.baseURL);
   const aggregator = new ContentAggregator(db);
   const profileManager = new ProfileManager(
     db,
-    config.openai.apiKey,
+    config.embedding.apiKey,
     config.xAccount.handle,
     config.deepseek.apiKey,
-    config.deepseek.baseURL
+    config.deepseek.baseURL,
+    config.embedding.baseURL,
+    config.embedding.model
   );
   const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
   const draftGenerator = new DraftGenerator(deepseekClient);

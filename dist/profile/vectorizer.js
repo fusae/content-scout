@@ -6,8 +6,8 @@ import { logger } from '../utils/logger.js';
  */
 export class Vectorizer {
     embeddingClient;
-    constructor(openaiApiKey) {
-        this.embeddingClient = new EmbeddingClient(openaiApiKey);
+    constructor(embeddingApiKey, embeddingBaseURL, embeddingModel) {
+        this.embeddingClient = new EmbeddingClient(embeddingApiKey, embeddingBaseURL, embeddingModel);
         logger.info('Vectorizer initialized');
     }
     /**

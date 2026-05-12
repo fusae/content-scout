@@ -9,6 +9,11 @@ export declare const config: {
         readonly apiKey: string;
         readonly model: string;
     };
+    readonly embedding: {
+        readonly apiKey: string;
+        readonly baseURL: string;
+        readonly model: string;
+    };
     readonly deepseek: {
         readonly apiKey: string;
         readonly baseURL: string;

@@ -5,7 +5,7 @@ import { AccountProfile } from './types.js';
  */
 export declare class Vectorizer {
     private embeddingClient;
-    constructor(openaiApiKey: string);
+    constructor(embeddingApiKey: string, embeddingBaseURL?: string, embeddingModel?: string);
     /**
      * 将账号画像转换为向量
      * 策略：将 topics + interests 组合成文本，生成 embedding

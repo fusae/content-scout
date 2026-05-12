@@ -18,7 +18,7 @@ async function main() {
         logger.info(`X Account: @${config.xAccount.handle}`);
         // 初始化账号画像管理器
         logger.info('Initializing profile manager...');
-        const profileManager = new ProfileManager(db, config.openai.apiKey, config.xAccount.handle, config.deepseek.apiKey || undefined, config.deepseek.baseURL);
+        const profileManager = new ProfileManager(db, config.embedding.apiKey, config.xAccount.handle, config.deepseek.apiKey || undefined, config.deepseek.baseURL, config.embedding.baseURL, config.embedding.model);
         // 检查并初始化账号画像
         let profile = await profileManager.getProfile();
         if (!profile) {

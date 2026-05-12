@@ -21,12 +21,12 @@ async function main() {
         await db.initialize();
         // 2. 初始化 AI 客户端
         logger.info('初始化 AI 客户端...');
-        const embeddingClient = new EmbeddingClient(config.openai.apiKey);
+        const embeddingClient = new EmbeddingClient(config.embedding.apiKey, config.embedding.baseURL, config.embedding.model);
         const deepseekClient = new DeepSeekClient(config.deepseek.apiKey, config.deepseek.baseURL);
         // 3. 初始化核心模块
         logger.info('初始化核心模块...');
         const aggregator = new ContentAggregator(db);
-        const profileManager = new ProfileManager(db, config.openai.apiKey, config.xAccount.handle, config.deepseek.apiKey, config.deepseek.baseURL);
+        const profileManager = new ProfileManager(db, config.embedding.apiKey, config.xAccount.handle, config.deepseek.apiKey, config.deepseek.baseURL, config.embedding.baseURL, config.embedding.model);
         const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
         const draftGenerator = new DraftGenerator(deepseekClient);
         const feishuClient = new FeishuClient(db);

@@ -1,11 +1,10 @@
 /**
- * OpenAI Embedding 客户端
- * 使用 text-embedding-3-small 模型生成 768 维向量
+ * OpenAI 兼容 Embedding 客户端
  */
 export declare class EmbeddingClient {
     private client;
     private model;
-    constructor(apiKey: string);
+    constructor(apiKey: string, baseURL?: string, model?: string);
     /**
      * 生成单个文本的 embedding 向量
      */

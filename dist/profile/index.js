@@ -15,9 +15,9 @@ export class ProfileManager {
     vectorizer;
     deepseekClient;
     accountHandle;
-    constructor(db, openaiApiKey, accountHandle, deepseekApiKey, deepseekBaseURL) {
+    constructor(db, embeddingApiKey, accountHandle, deepseekApiKey, deepseekBaseURL, embeddingBaseURL, embeddingModel) {
         this.db = db;
-        this.vectorizer = new Vectorizer(openaiApiKey);
+        this.vectorizer = new Vectorizer(embeddingApiKey, embeddingBaseURL, embeddingModel);
         this.accountHandle = accountHandle;
         if (deepseekApiKey) {
             this.deepseekClient = new DeepSeekClient(deepseekApiKey, deepseekBaseURL);

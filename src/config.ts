@@ -16,10 +16,19 @@ export const config = {
   logLevel: process.env.LOG_LEVEL || 'info',
   logFile: process.env.LOG_FILE || './logs/app.log',
 
-  // OpenAI 配置
+  // OpenAI 配置（保留兼容旧配置）
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
     model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
+  },
+
+  // Embedding 配置（默认使用阿里云百炼 OpenAI 兼容接口）
+  embedding: {
+    apiKey: process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY || '',
+    baseURL:
+      process.env.EMBEDDING_BASE_URL ||
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: process.env.EMBEDDING_MODEL || 'text-embedding-v4',
   },
 
   // DeepSeek 配置（可选）
@@ -57,8 +66,8 @@ export const config = {
 export function validateConfig(): void {
   const errors: string[] = [];
 
-  if (!config.openai.apiKey) {
-    errors.push('OPENAI_API_KEY is required');
+  if (!config.embedding.apiKey) {
+    errors.push('EMBEDDING_API_KEY is required');
   }
 
   if (!config.lark.appId || !config.lark.appSecret) {

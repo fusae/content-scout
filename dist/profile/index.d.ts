@@ -9,7 +9,7 @@ export declare class ProfileManager {
     private vectorizer;
     private deepseekClient?;
     private accountHandle;
-    constructor(db: DatabaseManager, openaiApiKey: string, accountHandle: string, deepseekApiKey?: string, deepseekBaseURL?: string);
+    constructor(db: DatabaseManager, embeddingApiKey: string, accountHandle: string, deepseekApiKey?: string, deepseekBaseURL?: string, embeddingBaseURL?: string, embeddingModel?: string);
     /**
      * 初始化账号画像
      * 从 initial-profile.json 读取数据并存储到数据库

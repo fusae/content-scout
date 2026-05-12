@@ -25,10 +25,12 @@ async function main() {
     logger.info('Initializing profile manager...');
     const profileManager = new ProfileManager(
       db,
-      config.openai.apiKey,
+      config.embedding.apiKey,
       config.xAccount.handle,
       config.deepseek.apiKey || undefined,
-      config.deepseek.baseURL
+      config.deepseek.baseURL,
+      config.embedding.baseURL,
+      config.embedding.model
     );
 
     // 检查并初始化账号画像

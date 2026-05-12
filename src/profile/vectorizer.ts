@@ -9,8 +9,12 @@ import { logger } from '../utils/logger.js';
 export class Vectorizer {
   private embeddingClient: EmbeddingClient;
 
-  constructor(openaiApiKey: string) {
-    this.embeddingClient = new EmbeddingClient(openaiApiKey);
+  constructor(embeddingApiKey: string, embeddingBaseURL?: string, embeddingModel?: string) {
+    this.embeddingClient = new EmbeddingClient(
+      embeddingApiKey,
+      embeddingBaseURL,
+      embeddingModel
+    );
     logger.info('Vectorizer initialized');
   }
 

@@ -2,16 +2,16 @@ import OpenAI from 'openai';
 import { logger } from '../utils/logger.js';
 
 /**
- * OpenAI Embedding 客户端
- * 使用 text-embedding-3-small 模型生成 768 维向量
+ * OpenAI 兼容 Embedding 客户端
  */
 export class EmbeddingClient {
   private client: OpenAI;
-  private model: string = 'text-embedding-3-small';
+  private model: string;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
-    logger.info('EmbeddingClient initialized');
+  constructor(apiKey: string, baseURL?: string, model: string = 'text-embedding-v4') {
+    this.client = new OpenAI({ apiKey, baseURL });
+    this.model = model;
+    logger.info(`EmbeddingClient initialized with model: ${model}`);
   }
 
   /**

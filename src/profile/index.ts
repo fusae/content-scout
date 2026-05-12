@@ -22,13 +22,15 @@ export class ProfileManager {
 
   constructor(
     db: DatabaseManager,
-    openaiApiKey: string,
+    embeddingApiKey: string,
     accountHandle: string,
     deepseekApiKey?: string,
-    deepseekBaseURL?: string
+    deepseekBaseURL?: string,
+    embeddingBaseURL?: string,
+    embeddingModel?: string
   ) {
     this.db = db;
-    this.vectorizer = new Vectorizer(openaiApiKey);
+    this.vectorizer = new Vectorizer(embeddingApiKey, embeddingBaseURL, embeddingModel);
     this.accountHandle = accountHandle;
 
     if (deepseekApiKey) {
