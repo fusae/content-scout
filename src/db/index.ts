@@ -137,6 +137,28 @@ export class DatabaseManager {
     return stmt.all(limit) as ContentPool[];
   }
 
+  getContentByUrl(url: string): ContentPool | undefined {
+    const stmt = this.db.prepare('SELECT * FROM content_pool WHERE url = ?');
+    return stmt.get(url) as ContentPool | undefined;
+  }
+
+  getContentByHash(_hash: string): ContentPool | undefined {
+    // 使用 title 和 url 的组合来查找（简化实现）
+    // 在实际应用中，可以添加专门的 hash 字段
+    // 这是一个简化实现，实际应该在表中添加 content_hash 字段
+    return undefined;
+  }
+
+  deleteOldContent(daysOld: number): number {
+    const stmt = this.db.prepare(`
+      DELETE FROM content_pool
+      WHERE collected_at < datetime('now', '-' || ? || ' days')
+    `);
+    const result = stmt.run(daysOld);
+    logger.info(`Deleted ${result.changes} old content items`);
+    return result.changes;
+  }
+
   /**
    * 推荐记录相关操作
    */

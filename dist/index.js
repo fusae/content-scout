@@ -1,7 +1,9 @@
 import { config, ensureDirectories } from './config.js';
 import { DatabaseManager } from './db/index.js';
+import { ContentAggregator } from './aggregator/index.js';
 import { logger } from './utils/logger.js';
-function main() {
+import cron from 'node-cron';
+async function main() {
     try {
         logger.info('Starting X Content Scout...');
         // 确保必要的目录存在
@@ -12,22 +14,45 @@ function main() {
         logger.info('Application initialized successfully');
         logger.info(`Database: ${config.dbPath}`);
         logger.info(`Log level: ${config.logLevel}`);
-        // 测试数据库操作
-        logger.info('Testing database operations...');
-        // 插入测试账号画像
-        db.upsertAccountProfile({
-            account_handle: '@test_account',
-            bio: 'Test account for X Content Scout',
-            topics: JSON.stringify(['AI', 'Technology', 'Startups']),
-            writing_style: JSON.stringify({ tone: 'professional', length: 'medium' }),
-            tweet_count: 0,
+        // 创建内容聚合器
+        const aggregator = new ContentAggregator(db);
+        // 立即运行一次内容聚合
+        logger.info('Running initial content aggregation...');
+        await aggregator.aggregateAll();
+        // 设置定时任务：每小时运行一次内容聚合
+        logger.info('Setting up scheduled content aggregation (every hour)...');
+        cron.schedule('0 * * * *', async () => {
+            logger.info('Running scheduled content aggregation...');
+            try {
+                await aggregator.aggregateAll();
+            }
+            catch (error) {
+                logger.error('Scheduled aggregation failed:', error);
+            }
         });
-        // 读取账号画像
-        const profile = db.getAccountProfile('@test_account');
-        logger.info(`Retrieved profile: ${JSON.stringify(profile)}`);
-        // 关闭数据库连接
-        db.close();
-        logger.info('All tests passed. Application is ready.');
+        // 设置定时任务：每天凌晨清理过期内容
+        logger.info('Setting up scheduled content cleanup (daily at midnight)...');
+        cron.schedule('0 0 * * *', async () => {
+            logger.info('Running scheduled content cleanup...');
+            try {
+                await aggregator.cleanupOldContent(7);
+            }
+            catch (error) {
+                logger.error('Scheduled cleanup failed:', error);
+            }
+        });
+        logger.info('X Content Scout is running. Press Ctrl+C to stop.');
+        // 保持进程运行
+        process.on('SIGINT', () => {
+            logger.info('Shutting down gracefully...');
+            db.close();
+            process.exit(0);
+        });
+        process.on('SIGTERM', () => {
+            logger.info('Shutting down gracefully...');
+            db.close();
+            process.exit(0);
+        });
     }
     catch (error) {
         logger.error('Application failed to start', error);

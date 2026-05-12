@@ -55,6 +55,9 @@ export declare class DatabaseManager {
     insertContent(content: ContentPool): number;
     getContentById(id: number): ContentPool | undefined;
     getRecentContent(limit?: number): ContentPool[];
+    getContentByUrl(url: string): ContentPool | undefined;
+    getContentByHash(_hash: string): ContentPool | undefined;
+    deleteOldContent(daysOld: number): number;
     /**
      * 推荐记录相关操作
      */

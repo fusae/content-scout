@@ -11,7 +11,8 @@
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "db:init": "tsx src/db/init.ts"
+    "db:init": "tsx src/db/init.ts",
+    "test:aggregator": "tsx src/test-aggregator.ts"
   },
   "keywords": [
     "x",
