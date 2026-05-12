@@ -43,7 +43,7 @@ export abstract class BaseScraper {
   /**
    * 带重试的 HTTP 请求
    */
-  protected async fetchWithRetry(url: string): Promise<string> {
+  protected async fetchWithRetry<T = unknown>(url: string): Promise<T> {
     return retry(
       async () => {
         logger.debug(`Fetching: ${url}`);
@@ -52,7 +52,7 @@ export abstract class BaseScraper {
             'User-Agent': this.getRandomUserAgent(),
           },
         });
-        return response.data as string;
+        return response.data as T;
       },
       {
         maxAttempts: 3,

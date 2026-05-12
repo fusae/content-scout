@@ -11,8 +11,7 @@ export class V2EXScraper extends BaseScraper {
         try {
             logger.info('Starting V2EX scrape...');
             const url = `${this.baseUrl}/topics/hot.json`;
-            const data = await this.fetchWithRetry(url);
-            const topics = JSON.parse(data);
+            const topics = await this.fetchWithRetry(url);
             logger.debug(`Fetched ${topics.length} hot topics from V2EX`);
             // 转换为标准格式
             const items = topics

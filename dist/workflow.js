@@ -59,8 +59,7 @@ async function runCompleteWorkflow() {
         logger.info(`  Total saved: ${totalSaved}`);
         logger.info(`  Duration: ${totalDuration}ms`);
         if (totalSaved === 0) {
-            logger.warn('No new content collected. Exiting workflow.');
-            return;
+            logger.warn('No new content collected. Continuing with recent database content.');
         }
         // Phase 3: 账号画像
         logger.info('\n=== Phase 3: Account Profile ===');

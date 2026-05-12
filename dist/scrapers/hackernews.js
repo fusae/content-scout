@@ -12,8 +12,7 @@ export class HackerNewsScraper extends BaseScraper {
             logger.info('Starting Hacker News scrape...');
             // 获取 Top Stories IDs
             const topStoriesUrl = `${this.baseUrl}/topstories.json`;
-            const topStoriesData = await this.fetchWithRetry(topStoriesUrl);
-            const topStoryIds = JSON.parse(topStoriesData);
+            const topStoryIds = await this.fetchWithRetry(topStoriesUrl);
             // 限制获取前 30 条
             const limitedIds = topStoryIds.slice(0, 30);
             logger.info(`Fetching ${limitedIds.length} top stories from Hacker News`);
@@ -23,8 +22,7 @@ export class HackerNewsScraper extends BaseScraper {
                 try {
                     await this.rateLimiter.execute(async () => {
                         const itemUrl = `${this.baseUrl}/item/${id}.json`;
-                        const itemData = await this.fetchWithRetry(itemUrl);
-                        const hnItem = JSON.parse(itemData);
+                        const hnItem = await this.fetchWithRetry(itemUrl);
                         // 只处理 story 类型
                         if (hnItem.type === 'story' && hnItem.title) {
                             const contentItem = this.convertToContentItem(hnItem);

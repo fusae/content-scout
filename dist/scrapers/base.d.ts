@@ -18,7 +18,7 @@ export declare abstract class BaseScraper {
     /**
      * 带重试的 HTTP 请求
      */
-    protected fetchWithRetry(url: string): Promise<string>;
+    protected fetchWithRetry<T = unknown>(url: string): Promise<T>;
     /**
      * 获取随机 User-Agent
      */

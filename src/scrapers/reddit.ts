@@ -15,6 +15,12 @@ interface RedditPost {
   };
 }
 
+interface RedditListing {
+  data?: {
+    children?: RedditPost[];
+  };
+}
+
 /**
  * Reddit 爬虫
  * 使用公开的 JSON API（无需认证）
@@ -64,8 +70,8 @@ export class RedditScraper extends BaseScraper {
     const url = `${this.baseUrl}/r/${subreddit}/hot.json?limit=25`;
 
     try {
-      const data = await this.fetchWithRetry(url);
-      const json = JSON.parse(data);
+      logger.warn('Reddit public endpoint may be blocked in this network; consider configuring an official Reddit API client later.');
+      const json = await this.fetchWithRetry<RedditListing>(url);
       const posts = json.data?.children || [];
 
       logger.debug(`Fetched ${posts.length} posts from r/${subreddit}`);

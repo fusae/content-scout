@@ -42,8 +42,8 @@ export class RedditScraper extends BaseScraper {
     async scrapeSubreddit(subreddit) {
         const url = `${this.baseUrl}/r/${subreddit}/hot.json?limit=25`;
         try {
-            const data = await this.fetchWithRetry(url);
-            const json = JSON.parse(data);
+            logger.warn('Reddit public endpoint may be blocked in this network; consider configuring an official Reddit API client later.');
+            const json = await this.fetchWithRetry(url);
             const posts = json.data?.children || [];
             logger.debug(`Fetched ${posts.length} posts from r/${subreddit}`);
             // 转换为标准格式
