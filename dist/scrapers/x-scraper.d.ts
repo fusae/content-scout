@@ -11,14 +11,12 @@ import { ContentItem } from '../types/content.js';
 export declare class XScraper extends BaseScraper {
     protected source: string;
     protected baseUrl: string;
-    private browser;
     private maxTweets;
     scrape(): Promise<ContentItem[]>;
     /**
-     * 解析推文
-     * 注意：X 的 DOM 结构经常变化，这个实现可能需要更新
+     * 使用 X API 搜索 AI/开发相关推文
      */
-    private parseTweets;
+    private searchTweets;
     /**
      * 转换为标准格式
      */

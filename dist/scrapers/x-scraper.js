@@ -1,6 +1,5 @@
 import { BaseScraper } from './base.js';
 import { logger } from '../utils/logger.js';
-import puppeteer from 'puppeteer';
 /**
  * X (Twitter) 爬虫
  * 注意：X 有严格的反爬虫机制，需要谨慎使用
@@ -11,44 +10,17 @@ import puppeteer from 'puppeteer';
  */
 export class XScraper extends BaseScraper {
     source = 'x';
-    baseUrl = 'https://twitter.com';
-    browser = null;
+    baseUrl = 'https://api.twitter.com/2';
     maxTweets = 10; // 限制抓取数量，避免被封
     async scrape() {
         try {
             logger.info('Starting X (Twitter) scrape...');
-            logger.warn('X scraping is rate-limited and may fail due to anti-bot measures');
-            this.browser = await puppeteer.launch({
-                headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-blink-features=AutomationControlled',
-                ],
-            });
-            const page = await this.browser.newPage();
-            // 设置更真实的浏览器环境
-            await page.setUserAgent(this.getRandomUserAgent());
-            await page.setViewport({ width: 1920, height: 1080 });
-            // 隐藏 webdriver 特征
-            await page.evaluateOnNewDocument(() => {
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => false,
-                });
-            });
-            // 访问 X Explore 页面（不需要登录）
-            const exploreUrl = 'https://twitter.com/explore';
-            await page.goto(exploreUrl, {
-                waitUntil: 'networkidle2',
-                timeout: 30000,
-            });
-            logger.debug('X Explore page loaded');
-            // 随机延迟，模拟人类行为
-            await this.randomDelay(2000, 4000);
-            // 尝试解析内容
-            const tweets = await this.parseTweets(page);
-            await this.browser.close();
-            this.browser = null;
+            const bearerToken = process.env.X_BEARER_TOKEN;
+            if (!bearerToken) {
+                logger.warn('X_BEARER_TOKEN not set, skipping X scrape');
+                return [];
+            }
+            const tweets = await this.searchTweets(bearerToken);
             if (tweets.length === 0) {
                 logger.warn('No tweets collected from X. This may indicate anti-bot detection.');
                 return [];
@@ -63,65 +35,38 @@ export class XScraper extends BaseScraper {
         }
         catch (error) {
             logger.error('X scrape failed:', error);
-            logger.warn('Consider using X API or manual input as fallback');
-            if (this.browser) {
-                await this.browser.close();
-                this.browser = null;
-            }
-            // 不抛出错误，返回空数组，避免阻塞其他爬虫
             return [];
         }
     }
     /**
-     * 解析推文
-     * 注意：X 的 DOM 结构经常变化，这个实现可能需要更新
+     * 使用 X API 搜索 AI/开发相关推文
      */
-    async parseTweets(page) {
-        try {
-            // 等待内容加载
-            await page.waitForSelector('article', { timeout: 10000 });
-            return page.evaluate((maxTweets) => {
-                const tweets = [];
-                const articles = document.querySelectorAll('article');
-                for (let i = 0; i < Math.min(articles.length, maxTweets); i++) {
-                    const article = articles[i];
-                    try {
-                        // 推文文本
-                        const textElement = article.querySelector('[data-testid="tweetText"]');
-                        const text = textElement ? textElement.textContent?.trim() || '' : '';
-                        if (!text)
-                            continue;
-                        // 作者
-                        const authorElement = article.querySelector('[data-testid="User-Name"] a');
-                        const author = authorElement ? authorElement.textContent?.trim() || 'Unknown' : 'Unknown';
-                        // URL（尝试获取推文链接）
-                        const linkElement = article.querySelector('a[href*="/status/"]');
-                        const href = linkElement ? linkElement.getAttribute('href') : null;
-                        const url = href ? `https://twitter.com${href}` : `https://twitter.com/explore`;
-                        // 互动数据（可能无法获取）
-                        const likeElement = article.querySelector('[data-testid="like"]');
-                        const retweetElement = article.querySelector('[data-testid="retweet"]');
-                        const replyElement = article.querySelector('[data-testid="reply"]');
-                        tweets.push({
-                            text,
-                            author,
-                            url,
-                            likes: likeElement ? parseInt(likeElement.textContent || '0', 10) : undefined,
-                            retweets: retweetElement ? parseInt(retweetElement.textContent || '0', 10) : undefined,
-                            replies: replyElement ? parseInt(replyElement.textContent || '0', 10) : undefined,
-                        });
-                    }
-                    catch (error) {
-                        console.error('Error parsing tweet:', error);
-                    }
-                }
-                return tweets;
-            }, this.maxTweets);
-        }
-        catch (error) {
-            logger.error('Failed to parse tweets:', error);
-            return [];
-        }
+    async searchTweets(bearerToken) {
+        const query = encodeURIComponent('(AI OR "AI agent" OR Codex OR LLM OR developer tools) lang:en -is:retweet');
+        const url = `${this.baseUrl}/tweets/search/recent?query=${query}` +
+            `&max_results=${this.maxTweets}` +
+            '&tweet.fields=created_at,public_metrics,author_id' +
+            '&expansions=author_id' +
+            '&user.fields=username,name';
+        const response = await this.axiosInstance.get(url, {
+            headers: {
+                Authorization: `Bearer ${bearerToken}`,
+            },
+        });
+        const users = new Map((response.data.includes?.users || []).map((user) => [user.id, user]));
+        return (response.data.data || []).map((tweet) => {
+            const user = tweet.author_id ? users.get(tweet.author_id) : undefined;
+            const username = user?.username || tweet.author_id || 'unknown';
+            return {
+                text: tweet.text,
+                author: user?.name || username,
+                url: `https://x.com/${username}/status/${tweet.id}`,
+                likes: tweet.public_metrics?.like_count,
+                retweets: tweet.public_metrics?.retweet_count,
+                replies: tweet.public_metrics?.reply_count,
+                createdAt: tweet.created_at,
+            };
+        });
     }
     /**
      * 转换为标准格式
@@ -133,7 +78,7 @@ export class XScraper extends BaseScraper {
             content: this.cleanContent(tweet.text),
             url: tweet.url,
             author: tweet.author,
-            publishedAt: new Date(), // X 不提供时间戳（未登录）
+            publishedAt: tweet.createdAt ? new Date(tweet.createdAt) : new Date(),
             metrics: {
                 likes: tweet.likes,
                 shares: tweet.retweets,

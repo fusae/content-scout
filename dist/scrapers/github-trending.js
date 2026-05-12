@@ -1,33 +1,17 @@
 import { BaseScraper } from './base.js';
 import { logger } from '../utils/logger.js';
-import puppeteer from 'puppeteer';
 /**
  * GitHub Trending 爬虫
- * 使用 Puppeteer 抓取（无官方 API）
+ * 使用 HTTP 抓取 Trending 页面，避免 Puppeteer 导航超时
  */
 export class GitHubTrendingScraper extends BaseScraper {
     source = 'github';
     baseUrl = 'https://github.com/trending';
-    browser = null;
     async scrape() {
         try {
             logger.info('Starting GitHub Trending scrape...');
-            this.browser = await puppeteer.launch({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox'],
-            });
-            const page = await this.browser.newPage();
-            await page.setUserAgent(this.getRandomUserAgent());
-            // 访问 GitHub Trending 页面
-            await page.goto(this.baseUrl, {
-                waitUntil: 'networkidle2',
-                timeout: 30000,
-            });
-            logger.debug('GitHub Trending page loaded');
-            // 解析页面内容
-            const repos = await this.parseRepos(page);
-            await this.browser.close();
-            this.browser = null;
+            const html = await this.fetchWithRetry(`${this.baseUrl}?since=daily`);
+            const repos = this.parseRepos(html);
             // 转换为标准格式
             const items = repos.map((repo) => this.convertToContentItem(repo));
             // 验证和去重
@@ -38,61 +22,49 @@ export class GitHubTrendingScraper extends BaseScraper {
         }
         catch (error) {
             logger.error('GitHub Trending scrape failed:', error);
-            if (this.browser) {
-                await this.browser.close();
-                this.browser = null;
-            }
             throw error;
         }
     }
     /**
      * 解析 GitHub Trending 页面
      */
-    async parseRepos(page) {
-        return page.evaluate(() => {
-            const repos = [];
-            const articles = document.querySelectorAll('article.Box-row');
-            articles.forEach((article) => {
-                try {
-                    // 仓库名称和链接
-                    const nameElement = article.querySelector('h2 a');
-                    if (!nameElement)
-                        return;
-                    const href = nameElement.getAttribute('href');
-                    if (!href)
-                        return;
-                    const fullName = href.replace(/^\//, '');
-                    const [author, name] = fullName.split('/');
-                    // 描述
-                    const descElement = article.querySelector('p');
-                    const description = descElement ? descElement.textContent?.trim() || '' : '';
-                    // Stars
-                    const starsElement = article.querySelector('svg.octicon-star')?.parentElement;
-                    const starsText = starsElement?.textContent?.trim().replace(/,/g, '') || '0';
-                    const stars = parseInt(starsText, 10) || 0;
-                    // 语言
-                    const langElement = article.querySelector('[itemprop="programmingLanguage"]');
-                    const language = langElement ? langElement.textContent?.trim() : undefined;
-                    // 今日 Stars
-                    const todayStarsElement = article.querySelector('span.float-sm-right');
-                    const todayStarsText = todayStarsElement?.textContent?.trim().match(/[\d,]+/)?.[0] || '0';
-                    const todayStars = parseInt(todayStarsText.replace(/,/g, ''), 10) || 0;
-                    repos.push({
-                        name,
-                        author,
-                        description,
-                        url: `https://github.com${href}`,
-                        stars,
-                        language,
-                        todayStars,
-                    });
-                }
-                catch (error) {
-                    console.error('Error parsing repo:', error);
-                }
+    parseRepos(html) {
+        const repos = [];
+        const articles = html.match(/<article[\s\S]*?<\/article>/g) || [];
+        for (const article of articles) {
+            const href = article.match(/<h2[\s\S]*?<a[^>]+href="([^"]+)"/)?.[1];
+            if (!href)
+                continue;
+            const fullName = this.decodeHtml(href.replace(/^\//, '').trim());
+            const [author, name] = fullName.split('/');
+            if (!author || !name)
+                continue;
+            const description = this.cleanContent(this.decodeHtml(article.match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] || ''));
+            const language = this.decodeHtml(article.match(/itemprop="programmingLanguage"[^>]*>(.*?)<\/span>/)?.[1] || '').trim() || undefined;
+            const starsText = article.match(/href="\/[^"]+\/stargazers"[\s\S]*?<\/svg>\s*([\d,]+)/)?.[1] || '0';
+            const todayStarsText = article.match(/([\d,]+)\s+stars today/)?.[1] || '0';
+            repos.push({
+                name: this.decodeHtml(name.trim()),
+                author: this.decodeHtml(author.trim()),
+                description,
+                url: `https://github.com/${fullName}`,
+                stars: parseInt(starsText.replace(/,/g, ''), 10) || 0,
+                language,
+                todayStars: parseInt(todayStarsText.replace(/,/g, ''), 10) || 0,
             });
-            return repos;
-        });
+        }
+        return repos;
+    }
+    decodeHtml(text) {
+        return text
+            .replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/\s+/g, ' ')
+            .trim();
     }
     /**
      * 转换为标准格式

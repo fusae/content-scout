@@ -1,18 +1,13 @@
 import { BaseScraper } from './base.js';
 import { ContentItem } from '../types/content.js';
 /**
- * 知乎热榜爬虫
- * 使用 Puppeteer 抓取
+ * 知乎内容爬虫
+ * 热榜接口需要登录时，使用知乎日报公开 API 作为稳定 fallback
  */
 export declare class ZhihuScraper extends BaseScraper {
     protected source: string;
     protected baseUrl: string;
-    private browser;
     scrape(): Promise<ContentItem[]>;
-    /**
-     * 解析知乎热榜
-     */
-    private parseHotItems;
     /**
      * 转换为标准格式
      */
