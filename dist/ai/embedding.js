@@ -35,20 +35,33 @@ export class EmbeddingClient {
     }
     /**
      * 批量生成 embedding 向量
+     * 阿里云限制每批最多 10 个，自动分批处理
      */
     async getBatchEmbeddings(texts) {
         try {
             logger.debug(`Generating embeddings for ${texts.length} texts`);
             const startTime = Date.now();
-            const response = await this.client.embeddings.create({
-                model: this.model,
-                input: texts,
-                encoding_format: 'float',
-            });
-            const embeddings = response.data.map(item => item.embedding);
+            const BATCH_SIZE = 10; // 阿里云限制
+            const allEmbeddings = [];
+            // 分批处理
+            for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+                const batch = texts.slice(i, i + BATCH_SIZE);
+                logger.debug(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(texts.length / BATCH_SIZE)} (${batch.length} texts)`);
+                const response = await this.client.embeddings.create({
+                    model: this.model,
+                    input: batch,
+                    encoding_format: 'float',
+                });
+                const embeddings = response.data.map(item => item.embedding);
+                allEmbeddings.push(...embeddings);
+                // 避免请求过快
+                if (i + BATCH_SIZE < texts.length) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
             const duration = Date.now() - startTime;
-            logger.info(`Batch embeddings generated successfully (${embeddings.length} vectors, ${duration}ms)`);
-            return embeddings;
+            logger.info(`Batch embeddings generated successfully (${allEmbeddings.length} vectors, ${duration}ms)`);
+            return allEmbeddings;
         }
         catch (error) {
             logger.error('Failed to generate batch embeddings:', error);

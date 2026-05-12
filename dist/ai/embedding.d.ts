@@ -11,6 +11,7 @@ export declare class EmbeddingClient {
     getEmbedding(text: string): Promise<number[]>;
     /**
      * 批量生成 embedding 向量
+     * 阿里云限制每批最多 10 个，自动分批处理
      */
     getBatchEmbeddings(texts: string[]): Promise<number[][]>;
     /**

@@ -74,9 +74,10 @@ export function validateConfig(): void {
     errors.push('LARK_APP_ID and LARK_APP_SECRET are required');
   }
 
-  if (!config.lark.baseId) {
-    errors.push('LARK_BASE_ID is required');
-  }
+  // LARK_BASE_ID 暂时不做强制校验
+  // if (!config.lark.baseId) {
+  //   errors.push('LARK_BASE_ID is required');
+  // }
 
   if (errors.length > 0) {
     throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
