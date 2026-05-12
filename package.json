@@ -1,0 +1,46 @@
+{
+  "name": "x-content-scout",
+  "version": "0.1.0",
+  "description": "X Account Content Planning Assistant",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && npm run copy-files",
+    "copy-files": "mkdir -p dist/db && cp src/db/schema.sql dist/db/",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "db:init": "tsx src/db/init.ts"
+  },
+  "keywords": [
+    "x",
+    "twitter",
+    "content",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.29.0",
+    "puppeteer": "^22.0.0",
+    "better-sqlite3": "^9.4.0",
+    "openai": "^4.28.0",
+    "node-cron": "^3.0.3",
+    "winston": "^3.11.0",
+    "dotenv": "^16.4.0",
+    "p-limit": "^5.0.0",
+    "axios": "^1.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.0",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "prettier": "^3.2.4"
+  }
+}

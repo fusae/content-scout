@@ -1,0 +1,36 @@
+2026-05-12 09:13:23 [info]: Initializing database...
+2026-05-12 09:13:23 [info]: Initializing database at: /Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/data/scout.db
+2026-05-12 09:13:24 [info]: Database schema initialized successfully
+2026-05-12 09:13:24 [info]: Database initialized successfully
+2026-05-12 09:13:24 [info]: Database location: /Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/data/scout.db
+2026-05-12 09:13:24 [info]: Database connection closed
+2026-05-12 09:14:11 [info]: Starting X Content Scout...
+2026-05-12 09:14:11 [info]: Initializing database at: ./data/scout.db
+2026-05-12 09:14:11 [info]: Database schema initialized successfully
+2026-05-12 09:14:11 [info]: Application initialized successfully
+2026-05-12 09:14:11 [info]: Database: ./data/scout.db
+2026-05-12 09:14:11 [info]: Log level: info
+2026-05-12 09:14:11 [info]: Testing database operations...
+2026-05-12 09:14:11 [info]: Retrieved profile: {"id":1,"account_handle":"@test_account","bio":"Test account for X Content Scout","topics":"[\"AI\",\"Technology\",\"Startups\"]","writing_style":"{\"tone\":\"professional\",\"length\":\"medium\"}","interest_vector":null,"last_updated":"2026-05-12 01:14:11","tweet_count":0}
+2026-05-12 09:14:11 [info]: Database connection closed
+2026-05-12 09:14:11 [info]: All tests passed. Application is ready.
+2026-05-12 09:14:31 [info]: Starting X Content Scout...
+2026-05-12 09:14:31 [info]: Initializing database at: ./data/scout.db
+2026-05-12 09:14:31 [info]: Database schema initialized successfully
+2026-05-12 09:14:31 [info]: Application initialized successfully
+2026-05-12 09:14:31 [info]: Database: ./data/scout.db
+2026-05-12 09:14:31 [info]: Log level: info
+2026-05-12 09:14:31 [info]: Testing database operations...
+2026-05-12 09:14:31 [info]: Retrieved profile: {"id":1,"account_handle":"@test_account","bio":"Test account for X Content Scout","topics":"[\"AI\",\"Technology\",\"Startups\"]","writing_style":"{\"tone\":\"professional\",\"length\":\"medium\"}","interest_vector":null,"last_updated":"2026-05-12 01:14:31","tweet_count":0}
+2026-05-12 09:14:31 [info]: Database connection closed
+2026-05-12 09:14:31 [info]: All tests passed. Application is ready.
+2026-05-12 09:15:34 [info]: Starting X Content Scout...
+2026-05-12 09:15:34 [info]: Initializing database at: ./data/scout.db
+2026-05-12 09:15:34 [info]: Database schema initialized successfully
+2026-05-12 09:15:34 [info]: Application initialized successfully
+2026-05-12 09:15:34 [info]: Database: ./data/scout.db
+2026-05-12 09:15:34 [info]: Log level: info
+2026-05-12 09:15:34 [info]: Testing database operations...
+2026-05-12 09:15:34 [info]: Retrieved profile: {"id":1,"account_handle":"@test_account","bio":"Test account for X Content Scout","topics":"[\"AI\",\"Technology\",\"Startups\"]","writing_style":"{\"tone\":\"professional\",\"length\":\"medium\"}","interest_vector":null,"last_updated":"2026-05-12 01:15:34","tweet_count":0}
+2026-05-12 09:15:34 [info]: Database connection closed
+2026-05-12 09:15:34 [info]: All tests passed. Application is ready.
