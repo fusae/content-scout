@@ -46,10 +46,10 @@ ${audience}
      */
     static calculateTargetLength(profile) {
         const avgLength = profile.writingStyle.avgLength;
-        const variance = 20; // 允许 ±20 字符的浮动
+        const variance = 120; // 宽松建议范围，仅用于 prompt，不作为硬约束
         return {
-            min: Math.max(50, avgLength - variance), // 最少 50 字符
-            max: Math.min(280, avgLength + variance), // 最多 280 字符
+            min: Math.max(30, avgLength - variance),
+            max: Math.min(4000, avgLength + variance),
         };
     }
     /**
@@ -74,15 +74,8 @@ ${audience}
     static validateDraft(draft, profile) {
         const issues = [];
         // 1. 检查长度
-        if (draft.length > 280) {
-            issues.push(`超过 280 字符限制 (当前: ${draft.length})`);
-        }
-        const targetLength = this.calculateTargetLength(profile);
-        if (draft.length < targetLength.min) {
-            issues.push(`长度过短 (当前: ${draft.length}, 建议: ${targetLength.min}-${targetLength.max})`);
-        }
-        else if (draft.length > targetLength.max) {
-            issues.push(`长度过长 (当前: ${draft.length}, 建议: ${targetLength.min}-${targetLength.max})`);
+        if (draft.length > 4000) {
+            issues.push(`超过 4000 字符限制 (当前: ${draft.length})`);
         }
         // 2. 检查 Emoji 使用
         const emojiCount = this.countEmojis(draft);

@@ -7,7 +7,7 @@ import { logger } from '../utils/logger.js';
 export class DraftGenerator {
     deepseekClient;
     DEFAULT_STYLES = ['opinion', 'share', 'question'];
-    MAX_LENGTH = 280;
+    MAX_LENGTH = 4000;
     constructor(deepseekClient) {
         this.deepseekClient = deepseekClient;
         logger.info('DraftGenerator initialized');
@@ -144,7 +144,7 @@ ${sampleTweets}
                 reasoning: item.reasoning || '',
                 length: (item.content || '').length,
             }));
-            // 过滤掉超长的草稿
+            // 过滤掉异常超长的草稿
             return drafts.filter(draft => draft.length <= maxLength);
         }
         catch (error) {
@@ -166,9 +166,9 @@ ${sampleTweets}
             else {
                 logger.warn(`Draft validation failed: ${validation.issues.join(', ')}`);
                 logger.debug(`Draft content: ${draft.content}`);
-                // 尝试修复：如果只是长度问题，截断处理
-                if (draft.length > 280 && validation.issues.length === 1) {
-                    const fixed = this.truncateDraft(draft.content, 280);
+                // 尝试修复：如果只是超过宽松上限，截断处理
+                if (draft.length > this.MAX_LENGTH && validation.issues.length === 1) {
+                    const fixed = this.truncateDraft(draft.content, this.MAX_LENGTH);
                     validated.push({
                         ...draft,
                         content: fixed,
