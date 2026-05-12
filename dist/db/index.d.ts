@@ -4,6 +4,9 @@ export interface AccountProfile {
     bio?: string;
     topics?: string;
     writing_style?: string;
+    interests?: string;
+    audience?: string;
+    sample_tweets?: string;
     interest_vector?: string;
     last_updated?: string;
     tweet_count?: number;

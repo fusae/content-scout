@@ -5,7 +5,10 @@ CREATE TABLE IF NOT EXISTS account_profile (
   bio TEXT,
   topics TEXT, -- JSON array
   writing_style TEXT, -- JSON object
-  interest_vector TEXT, -- Serialized vector
+  interests TEXT, -- JSON array
+  audience TEXT, -- 目标受众描述
+  sample_tweets TEXT, -- JSON array
+  interest_vector TEXT, -- Serialized vector (768-dim)
   last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   tweet_count INTEGER DEFAULT 0
 );

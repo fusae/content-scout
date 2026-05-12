@@ -22,6 +22,17 @@ export const config = {
     model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
   },
 
+  // DeepSeek 配置（可选）
+  deepseek: {
+    apiKey: process.env.DEEPSEEK_API_KEY || '',
+    baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
+  },
+
+  // X 账号配置
+  xAccount: {
+    handle: process.env.X_ACCOUNT_HANDLE || 'rabbitrun_eth',
+  },
+
   // 飞书配置
   lark: {
     appId: process.env.LARK_APP_ID || '',

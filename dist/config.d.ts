@@ -9,6 +9,13 @@ export declare const config: {
         readonly apiKey: string;
         readonly model: string;
     };
+    readonly deepseek: {
+        readonly apiKey: string;
+        readonly baseURL: string;
+    };
+    readonly xAccount: {
+        readonly handle: string;
+    };
     readonly lark: {
         readonly appId: string;
         readonly appSecret: string;

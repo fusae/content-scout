@@ -27,17 +27,20 @@ export class DatabaseManager {
      */
     upsertAccountProfile(profile) {
         const stmt = this.db.prepare(`
-      INSERT INTO account_profile (account_handle, bio, topics, writing_style, interest_vector, tweet_count)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO account_profile (account_handle, bio, topics, writing_style, interests, audience, sample_tweets, interest_vector, tweet_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(account_handle) DO UPDATE SET
         bio = excluded.bio,
         topics = excluded.topics,
         writing_style = excluded.writing_style,
+        interests = excluded.interests,
+        audience = excluded.audience,
+        sample_tweets = excluded.sample_tweets,
         interest_vector = excluded.interest_vector,
         tweet_count = excluded.tweet_count,
         last_updated = CURRENT_TIMESTAMP
     `);
-        stmt.run(profile.account_handle, profile.bio || null, profile.topics || null, profile.writing_style || null, profile.interest_vector || null, profile.tweet_count || 0);
+        stmt.run(profile.account_handle, profile.bio || null, profile.topics || null, profile.writing_style || null, profile.interests || null, profile.audience || null, profile.sample_tweets || null, profile.interest_vector || null, profile.tweet_count || 0);
         logger.debug(`Account profile upserted: ${profile.account_handle}`);
     }
     getAccountProfile(accountHandle) {
