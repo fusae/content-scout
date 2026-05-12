@@ -79,6 +79,7 @@ export declare class DatabaseManager {
     insertRecommendation(recommendation: Recommendation): number;
     updateRecommendationStatus(id: number, status: string, feedback?: string): void;
     getRecommendationsByStatus(status: string): Recommendation[];
+    getRecommendationById(id: number): Recommendation | undefined;
     /**
      * 反馈日志相关操作
      */

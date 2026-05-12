@@ -240,6 +240,11 @@ export class DatabaseManager {
     return stmt.all(status) as Recommendation[];
   }
 
+  getRecommendationById(id: number): Recommendation | undefined {
+    const stmt = this.db.prepare('SELECT * FROM recommendations WHERE id = ?');
+    return stmt.get(id) as Recommendation | undefined;
+  }
+
   /**
    * 反馈日志相关操作
    */

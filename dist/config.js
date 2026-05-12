@@ -31,6 +31,7 @@ export const config = {
         appId: process.env.LARK_APP_ID || '',
         appSecret: process.env.LARK_APP_SECRET || '',
         baseId: process.env.LARK_BASE_ID || '',
+        defaultReceiverId: process.env.FEISHU_DEFAULT_RECEIVER_ID || '',
     },
     // 速率限制配置
     rateLimit: {

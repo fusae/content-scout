@@ -144,4 +144,39 @@ ${sampleTweets.map((tweet, i) => `${i + 1}. ${tweet}`).join('\n\n')}
       throw error;
     }
   }
+
+  /**
+   * 通用聊天接口
+   */
+  async chat(
+    prompt: string,
+    options?: {
+      temperature?: number;
+      maxTokens?: number;
+      systemPrompt?: string;
+    }
+  ): Promise<string> {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: options?.systemPrompt || '你是一个专业的 AI 助手。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: options?.temperature ?? 0.7,
+        max_tokens: options?.maxTokens,
+      });
+
+      return response.choices[0].message.content || '';
+    } catch (error) {
+      logger.error('DeepSeek chat failed:', error);
+      throw error;
+    }
+  }
 }

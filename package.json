@@ -13,7 +13,9 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "db:init": "tsx src/db/init.ts",
     "test:aggregator": "tsx src/test-aggregator.ts",
-    "test:filter": "tsx src/test-filter.ts"
+    "test:filter": "tsx src/test-filter.ts",
+    "test:generator": "tsx src/test-generator-feishu.ts",
+    "workflow": "tsx src/workflow.ts"
   },
   "keywords": [
     "x",

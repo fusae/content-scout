@@ -19,5 +19,13 @@ export declare class DeepSeekClient {
      * 生成推文草稿
      */
     generateTweetDraft(topic: string, profile: any): Promise<string>;
+    /**
+     * 通用聊天接口
+     */
+    chat(prompt: string, options?: {
+        temperature?: number;
+        maxTokens?: number;
+        systemPrompt?: string;
+    }): Promise<string>;
 }
 //# sourceMappingURL=deepseek.d.ts.map

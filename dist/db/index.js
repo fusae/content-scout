@@ -151,6 +151,10 @@ export class DatabaseManager {
         const stmt = this.db.prepare('SELECT * FROM recommendations WHERE status = ? ORDER BY recommended_at DESC');
         return stmt.all(status);
     }
+    getRecommendationById(id) {
+        const stmt = this.db.prepare('SELECT * FROM recommendations WHERE id = ?');
+        return stmt.get(id);
+    }
     /**
      * 反馈日志相关操作
      */

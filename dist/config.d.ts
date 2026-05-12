@@ -20,6 +20,7 @@ export declare const config: {
         readonly appId: string;
         readonly appSecret: string;
         readonly baseId: string;
+        readonly defaultReceiverId: string;
     };
     readonly rateLimit: {
         readonly maxConcurrent: number;
