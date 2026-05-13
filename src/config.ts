@@ -42,6 +42,14 @@ export const config = {
     handle: process.env.X_ACCOUNT_HANDLE || 'rabbitrun_eth',
   },
 
+  // Reddit 配置：API 审批前使用 RSS 抓取公开 subreddit
+  reddit: {
+    subreddits: (process.env.REDDIT_SUBREDDITS || 'LocalLLaMA,OpenAI,ChatGPT,artificial,MachineLearning,programming,startups,technology')
+      .split(',')
+      .map((subreddit) => subreddit.trim().replace(/^r\//i, ''))
+      .filter(Boolean),
+  },
+
   // 飞书配置
   lark: {
     appId: process.env.LARK_APP_ID || '',

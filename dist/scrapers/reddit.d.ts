@@ -2,7 +2,7 @@ import { BaseScraper } from './base.js';
 import { ContentItem } from '../types/content.js';
 /**
  * Reddit 爬虫
- * 使用公开的 JSON API（无需认证）
+ * API 审批前使用公开 RSS
  */
 export declare class RedditScraper extends BaseScraper {
     protected source: string;
@@ -17,5 +17,10 @@ export declare class RedditScraper extends BaseScraper {
      * 转换为标准格式
      */
     private convertToContentItem;
+    private parseAtomEntries;
+    private getTagValue;
+    private getNestedTagValue;
+    private getLinkHref;
+    private decodeHtml;
 }
 //# sourceMappingURL=reddit.d.ts.map

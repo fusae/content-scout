@@ -28,10 +28,13 @@ npm install
 
 ### 2. 配置环境变量
 
-复制 `.env.example` 到 `.env` 并填写配置：
+创建 `.env` 并填写配置：
 
 ```bash
-cp .env.example .env
+EMBEDDING_API_KEY=your_dashscope_api_key
+LARK_APP_ID=your_lark_app_id
+LARK_APP_SECRET=your_lark_app_secret
+REDDIT_SUBREDDITS=LocalLLaMA,OpenAI,ChatGPT,artificial,MachineLearning,programming,startups,technology
 ```
 
 ### 3. 初始化数据库
@@ -82,8 +85,14 @@ npm start
 - Node.js 20+
 - SQLite (better-sqlite3)
 - Winston (日志)
-- OpenAI API
+- 阿里云百炼 Embedding
 - 飞书 API
+
+## 内容渠道
+
+- 可直接运行：Hacker News、GitHub Trending、知乎日报、Reddit RSS、V2EX
+- 需要凭证：Product Hunt（`PRODUCTHUNT_API_TOKEN`）
+- 暂不处理：X（`X_BEARER_TOKEN`，API 成本较高）
 
 ## Phase 1 完成状态
 

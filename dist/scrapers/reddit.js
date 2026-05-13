@@ -1,13 +1,14 @@
 import { BaseScraper } from './base.js';
 import { logger } from '../utils/logger.js';
+import { config } from '../config.js';
 /**
  * Reddit 爬虫
- * 使用公开的 JSON API（无需认证）
+ * API 审批前使用公开 RSS
  */
 export class RedditScraper extends BaseScraper {
     source = 'reddit';
     baseUrl = 'https://www.reddit.com';
-    subreddits = ['programming', 'technology'];
+    subreddits = config.reddit.subreddits;
     async scrape() {
         try {
             logger.info('Starting Reddit scrape...');
@@ -40,15 +41,14 @@ export class RedditScraper extends BaseScraper {
      * 抓取单个 subreddit
      */
     async scrapeSubreddit(subreddit) {
-        const url = `${this.baseUrl}/r/${subreddit}/hot.json?limit=25`;
+        const url = `${this.baseUrl}/r/${subreddit}/.rss`;
         try {
-            logger.warn('Reddit public endpoint may be blocked in this network; consider configuring an official Reddit API client later.');
-            const json = await this.fetchWithRetry(url);
-            const posts = json.data?.children || [];
-            logger.debug(`Fetched ${posts.length} posts from r/${subreddit}`);
+            const xml = await this.fetchWithRetry(url);
+            const entries = this.parseAtomEntries(xml);
+            logger.debug(`Fetched ${entries.length} RSS entries from r/${subreddit}`);
             // 转换为标准格式
-            const items = posts
-                .map((post) => this.convertToContentItem(post, subreddit))
+            const items = entries
+                .map((entry) => this.convertToContentItem(entry, subreddit))
                 .filter((item) => this.validateItem(item));
             return items;
         }
@@ -60,25 +60,62 @@ export class RedditScraper extends BaseScraper {
     /**
      * 转换为标准格式
      */
-    convertToContentItem(post, subreddit) {
-        const postData = post.data;
-        const content = postData.selftext || postData.title;
-        const url = postData.url.startsWith('http')
-            ? postData.url
-            : `${this.baseUrl}${postData.permalink}`;
+    convertToContentItem(entry, subreddit) {
         return {
             source: 'reddit',
-            title: `[r/${subreddit}] ${postData.title}`,
-            content: this.cleanContent(content),
-            url: url,
-            author: postData.author,
-            publishedAt: new Date(postData.created_utc * 1000),
+            title: `[r/${subreddit}] ${entry.title}`,
+            content: this.cleanContent(this.stripHtml(this.decodeHtml(entry.content)) || entry.title),
+            url: entry.url,
+            author: entry.author,
+            publishedAt: entry.publishedAt,
             metrics: {
-                points: postData.ups,
-                comments: postData.num_comments,
+                points: 0,
+                comments: 0,
             },
             collectedAt: new Date(),
         };
+    }
+    parseAtomEntries(xml) {
+        const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)];
+        return entries.map(([, entryXml]) => {
+            const title = this.decodeHtml(this.getTagValue(entryXml, 'title'));
+            const content = this.getTagValue(entryXml, 'content');
+            const author = this.decodeHtml(this.getNestedTagValue(entryXml, 'author', 'name')).replace(/^\/u\//, '');
+            const url = this.getLinkHref(entryXml);
+            const published = this.getTagValue(entryXml, 'published') || this.getTagValue(entryXml, 'updated');
+            return {
+                title,
+                content,
+                url,
+                author,
+                publishedAt: published ? new Date(published) : new Date(),
+            };
+        });
+    }
+    getTagValue(xml, tagName) {
+        const match = xml.match(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`));
+        return match?.[1]?.trim() || '';
+    }
+    getNestedTagValue(xml, parentTagName, childTagName) {
+        const parent = this.getTagValue(xml, parentTagName);
+        return parent ? this.getTagValue(parent, childTagName) : '';
+    }
+    getLinkHref(xml) {
+        const match = xml.match(/<link\s+href="([^"]+)"/);
+        return this.decodeHtml(match?.[1] || '');
+    }
+    decodeHtml(text) {
+        if (!text)
+            return '';
+        return text
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&#x27;/g, "'")
+            .replace(/&#32;/g, ' ')
+            .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
     }
 }
 //# sourceMappingURL=reddit.js.map

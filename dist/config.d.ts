@@ -21,6 +21,9 @@ export declare const config: {
     readonly xAccount: {
         readonly handle: string;
     };
+    readonly reddit: {
+        readonly subreddits: string[];
+    };
     readonly lark: {
         readonly appId: string;
         readonly appSecret: string;
