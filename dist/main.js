@@ -49,7 +49,7 @@ async function main() {
         }
         // 5. 初始化飞书客户端
         logger.info('初始化飞书客户端...');
-        await feishuClient.initialize();
+        await feishuClient.initialize(config.lark.defaultReceiverId || undefined);
         // 6. 创建调度器
         logger.info('创建定时任务调度器...');
         const scheduler = new Scheduler(aggregator, profileManager, filterEngine, draftGenerator, feishuClient, feedbackLearner, db);
