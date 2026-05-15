@@ -55,6 +55,7 @@ async function main() {
         const scheduler = new Scheduler(aggregator, profileManager, filterEngine, draftGenerator, feishuClient, feedbackLearner, db);
         // 7. 启动调度器
         scheduler.start();
+        const keepAlive = setInterval(() => undefined, 24 * 60 * 60 * 1000);
         logger.info('========== X Content Scout 启动完成 ==========');
         logger.info('系统正在运行，按 Ctrl+C 退出');
         // 8. 如果是开发模式，立即执行一次任务
@@ -70,13 +71,16 @@ async function main() {
             }, 3000);
         }
         // 9. 优雅退出
-        process.on('SIGINT', async () => {
+        const shutdown = async () => {
             logger.info('收到退出信号，正在关闭...');
+            clearInterval(keepAlive);
             scheduler.stop();
             db.close();
             logger.info('已安全退出');
             process.exit(0);
-        });
+        };
+        process.on('SIGINT', shutdown);
+        process.on('SIGTERM', shutdown);
     }
     catch (error) {
         logger.error('启动失败', error);
