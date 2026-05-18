@@ -85,12 +85,12 @@ export class CardBuilder {
                 tag: 'plain_text',
               },
               type: 'primary',
-              value: JSON.stringify({
+              value: {
                 action: 'copy',
                 draft_index: 0,
                 content_id: content.contentId,
                 recommendation_id: recommendationId,
-              } as CardActionValue),
+              } as CardActionValue,
             },
             {
               tag: 'button',
@@ -99,12 +99,12 @@ export class CardBuilder {
                 tag: 'plain_text',
               },
               type: 'primary',
-              value: JSON.stringify({
+              value: {
                 action: 'copy',
                 draft_index: 1,
                 content_id: content.contentId,
                 recommendation_id: recommendationId,
-              } as CardActionValue),
+              } as CardActionValue,
             },
             {
               tag: 'button',
@@ -113,12 +113,12 @@ export class CardBuilder {
                 tag: 'plain_text',
               },
               type: 'primary',
-              value: JSON.stringify({
+              value: {
                 action: 'copy',
                 draft_index: 2,
                 content_id: content.contentId,
                 recommendation_id: recommendationId,
-              } as CardActionValue),
+              } as CardActionValue,
             },
           ],
         },
@@ -128,15 +128,28 @@ export class CardBuilder {
             {
               tag: 'button',
               text: {
+                content: '✍️ 写成文章',
+                tag: 'plain_text',
+              },
+              type: 'primary',
+              value: {
+                action: 'article',
+                content_id: content.contentId,
+                recommendation_id: recommendationId,
+              } as CardActionValue,
+            },
+            {
+              tag: 'button',
+              text: {
                 content: '👎 不感兴趣',
                 tag: 'plain_text',
               },
               type: 'default',
-              value: JSON.stringify({
+              value: {
                 action: 'reject',
                 content_id: content.contentId,
                 recommendation_id: recommendationId,
-              } as CardActionValue),
+              } as CardActionValue,
             },
             {
               tag: 'button',
@@ -226,7 +239,7 @@ export class CardBuilder {
         {
           tag: 'div',
           text: {
-            content: `为你精选了 **${count}** 条优质内容，每条都附带 3 个不同风格的推文草稿。\n\n点击下方卡片查看详情，选择你喜欢的草稿直接复制发布！`,
+            content: `为你精选了 **${count}** 条优质内容，每条都附带 3 个不同风格的推文草稿。\n\n你可以直接复制发布，也可以把合适的话题一键转成文章任务。`,
             tag: 'lark_md',
           },
         },

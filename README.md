@@ -1,6 +1,6 @@
 # X Content Scout
 
-X 账号内容策划助手 - Phase 1: 基础设施
+面向 X 创作者的内容搜集、筛选、草稿生成和飞书推送助手。
 
 ## 项目结构
 
@@ -26,16 +26,27 @@ src/
 npm install
 ```
 
-### 2. 配置环境变量
+### 2. 配置环境变量和私有画像
 
-创建 `.env` 并填写配置：
+复制模板并填写配置：
 
 ```bash
+cp .env.example .env
+cp config/profile.example.json config/profile.local.json
+```
+
+`.env` 至少填写：
+
+```bash
+PROFILE_PATH=./config/profile.local.json
 EMBEDDING_API_KEY=your_dashscope_api_key
 LARK_APP_ID=your_lark_app_id
 LARK_APP_SECRET=your_lark_app_secret
+X_ACCOUNT_HANDLE=your_x_handle
 REDDIT_SUBREDDITS=LocalLLaMA,OpenAI,ChatGPT,artificial,MachineLearning,programming,startups,technology
 ```
+
+`config/profile.local.json` 用来存放你的账号画像、兴趣和样例内容；它已被 `.gitignore` 排除，不会进入仓库。
 
 ### 3. 初始化数据库
 
@@ -87,6 +98,11 @@ npm start
 - Winston (日志)
 - 阿里云百炼 Embedding
 - 飞书 API
+
+## 开源约定
+
+- 仓库只保留通用画像样例，真实画像请放在 `config/profile.local.json`
+- `.env`、`data/*.db*`、`logs/`、`dist/` 都不会进入版本控制
 
 ## 内容渠道
 

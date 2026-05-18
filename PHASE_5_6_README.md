@@ -268,7 +268,7 @@ await feishuClient.pushRecommendations([
 
 ## 相关文件
 
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/generator/` - 草稿生成器
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/feishu/` - 飞书客户端
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/test-generator-feishu.ts` - 测试文件
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/workflow.ts` - 完整工作流
+- `src/generator/` - 草稿生成器
+- `src/feishu/` - 飞书客户端
+- `src/test-generator-feishu.ts` - 测试文件
+- `src/workflow.ts` - 完整工作流

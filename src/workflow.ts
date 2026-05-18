@@ -57,7 +57,8 @@ async function runCompleteWorkflow() {
     config.deepseek.apiKey,
     config.deepseek.baseURL,
     config.embedding.baseURL,
-    config.embedding.model
+    config.embedding.model,
+    config.profile.path
   );
   const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
   const draftGenerator = new DraftGenerator(deepseekClient);

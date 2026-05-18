@@ -6,6 +6,7 @@ import { FilteredContent } from '../filter/types.js';
 import { Draft } from '../generator/types.js';
 import { PushOptions, PushResult } from './types.js';
 import { logger } from '../utils/logger.js';
+import { CardActionCallback, CardActionValue } from './types.js';
 
 /**
  * 飞书客户端主类
@@ -31,6 +32,13 @@ export class FeishuClient {
     // 获取机器人信息
     const botInfo = await this.larkClient.getBotInfo();
     logger.info(`Feishu bot ready: ${botInfo.bot_name}`);
+
+    await this.larkClient.startCardActionListener(async (data) => {
+      const callback = this.normalizeCardAction(data);
+      if (callback) {
+        await this.handleCardAction(callback);
+      }
+    });
   }
 
   /**
@@ -155,6 +163,10 @@ export class FeishuClient {
     await this.larkClient.sendText(targetId, text);
   }
 
+  close(): void {
+    this.larkClient.close();
+  }
+
   /**
    * 获取推荐统计
    */
@@ -179,6 +191,40 @@ export class FeishuClient {
       receiveIdType: options?.receiveIdType ?? 'open_id',
       receiverId: options?.receiverId,
     };
+  }
+
+  private normalizeCardAction(data: any): CardActionCallback | undefined {
+    const openId = data?.operator?.open_id || data?.open_id;
+    const rawValue = data?.action?.value;
+    const action = this.parseCardActionValue(rawValue);
+
+    if (!openId || !action) {
+      logger.warn('Ignored invalid card action event');
+      return undefined;
+    }
+
+    return {
+      open_id: openId,
+      user_id: data?.operator?.user_id || data?.user_id || '',
+      action,
+      token: data?.token || '',
+    };
+  }
+
+  private parseCardActionValue(value: unknown): CardActionValue | undefined {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value) as CardActionValue;
+      } catch {
+        return undefined;
+      }
+    }
+
+    if (typeof value === 'object' && value !== null) {
+      return value as CardActionValue;
+    }
+
+    return undefined;
   }
 
   /**

@@ -10,6 +10,8 @@ import { DatabaseManager } from '../db/index.js';
 import { ProfileManager } from '../profile/index.js';
 import { FilteredContent } from '../filter/types.js';
 
+const accountHandle = process.env.X_ACCOUNT_HANDLE || 'example_creator';
+
 /**
  * 示例 1: 基本使用
  */
@@ -28,7 +30,7 @@ async function example1_basicUsage() {
   const profileManager = new ProfileManager(
     db,
     process.env.OPENAI_API_KEY!,
-    'rabbitrun_eth'
+    accountHandle
   );
   const profile = await profileManager.getProfile();
 
@@ -67,7 +69,7 @@ async function example2_customOptions() {
   const profileManager = new ProfileManager(
     db,
     process.env.OPENAI_API_KEY!,
-    'rabbitrun_eth'
+    accountHandle
   );
   const profile = await profileManager.getProfile();
 
@@ -119,7 +121,7 @@ async function example3_saveRecommendations() {
   const profileManager = new ProfileManager(
     db,
     process.env.OPENAI_API_KEY!,
-    'rabbitrun_eth'
+    accountHandle
   );
   const profile = await profileManager.getProfile();
 
@@ -166,7 +168,7 @@ async function example4_scenarios() {
   const profileManager = new ProfileManager(
     db,
     process.env.OPENAI_API_KEY!,
-    'rabbitrun_eth'
+    accountHandle
   );
   const profile = await profileManager.getProfile();
 
@@ -224,7 +226,7 @@ async function example5_errorHandling() {
   const profileManager = new ProfileManager(
     db,
     process.env.OPENAI_API_KEY!,
-    'rabbitrun_eth'
+    accountHandle
   );
 
   try {

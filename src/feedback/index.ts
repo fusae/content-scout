@@ -1,6 +1,6 @@
-import { DatabaseManager } from '../db';
-import { AccountProfile } from '../profile/types';
-import { logger } from '../utils/logger';
+import { DatabaseManager } from '../db/index.js';
+import { AccountProfile } from '../profile/types.js';
+import { logger } from '../utils/logger.js';
 
 interface FeedbackPattern {
   acceptedTopics: string[];

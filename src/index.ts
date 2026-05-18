@@ -30,13 +30,14 @@ async function main() {
       config.deepseek.apiKey || undefined,
       config.deepseek.baseURL,
       config.embedding.baseURL,
-      config.embedding.model
+      config.embedding.model,
+      config.profile.path
     );
 
     // 检查并初始化账号画像
     let profile = await profileManager.getProfile();
     if (!profile) {
-      logger.info('No profile found, initializing from initial-profile.json...');
+      logger.info('No profile found, initializing from configured profile data...');
       profile = await profileManager.initializeProfile();
       logger.info('Profile initialized successfully');
       logger.info(`Topics: ${profile.topics.join(', ')}`);

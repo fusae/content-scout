@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
  */
 export class LarkClient {
   private client: lark.Client;
+  private wsClient?: lark.WSClient;
   private appId: string;
   private appSecret: string;
 
@@ -165,5 +166,28 @@ export class LarkClient {
    */
   getClient(): lark.Client {
     return this.client;
+  }
+
+  /**
+   * 启动卡片事件监听
+   */
+  async startCardActionListener(handler: (data: any) => Promise<void>): Promise<void> {
+    this.wsClient = new lark.WSClient({
+      appId: this.appId,
+      appSecret: this.appSecret,
+      domain: lark.Domain.Feishu,
+    });
+
+    await this.wsClient.start({
+      eventDispatcher: new lark.EventDispatcher({}).register({
+        'card.action.trigger': handler,
+      }),
+    });
+
+    logger.info('Lark card action listener started');
+  }
+
+  close(): void {
+    this.wsClient?.close();
   }
 }

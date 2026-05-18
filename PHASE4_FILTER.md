@@ -215,7 +215,7 @@ updateContentEmbedding(id: number, vector: string): void
 
 ```
 === Starting Filter Engine ===
-Profile: @rabbitrun_eth
+Profile: @example_creator
 Options: topK=20, finalCount=5, minScore=7.0
 Fetched 100 recent contents from database
 Starting embedding filter: 100 contents -> top 20

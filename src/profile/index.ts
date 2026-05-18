@@ -1,5 +1,5 @@
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { DatabaseManager } from '../db/index.js';
 import { Vectorizer } from './vectorizer.js';
@@ -19,6 +19,7 @@ export class ProfileManager {
   private vectorizer: Vectorizer;
   private deepseekClient?: DeepSeekClient;
   private accountHandle: string;
+  private profilePath?: string;
 
   constructor(
     db: DatabaseManager,
@@ -27,11 +28,13 @@ export class ProfileManager {
     deepseekApiKey?: string,
     deepseekBaseURL?: string,
     embeddingBaseURL?: string,
-    embeddingModel?: string
+    embeddingModel?: string,
+    profilePath?: string
   ) {
     this.db = db;
     this.vectorizer = new Vectorizer(embeddingApiKey, embeddingBaseURL, embeddingModel);
     this.accountHandle = accountHandle;
+    this.profilePath = profilePath;
 
     if (deepseekApiKey) {
       this.deepseekClient = new DeepSeekClient(deepseekApiKey, deepseekBaseURL);
@@ -43,7 +46,7 @@ export class ProfileManager {
 
   /**
    * 初始化账号画像
-   * 从 initial-profile.json 读取数据并存储到数据库
+   * 从私有画像文件或内置样例读取数据并存储到数据库
    */
   async initializeProfile(): Promise<AccountProfile> {
     try {
@@ -58,11 +61,11 @@ export class ProfileManager {
 
       // 读取初始画像数据
       const initialData = this.loadInitialProfileData();
-      logger.info(`Loaded initial profile data for: ${initialData.accountHandle}`);
+      logger.info('Loaded initial profile data');
 
       // 转换为 AccountProfile 格式
       const profile: AccountProfile = {
-        accountHandle: initialData.accountHandle,
+        accountHandle: this.accountHandle,
         bio: initialData.bio,
         topics: initialData.topics,
         writingStyle: initialData.writingStyle,
@@ -211,7 +214,13 @@ export class ProfileManager {
    * 从文件加载初始画像数据
    */
   private loadInitialProfileData(): InitialProfileData {
-    const dataPath = join(__dirname, '../data/initial-profile.json');
+    const bundledPath = join(__dirname, '../data/initial-profile.json');
+    const dataPath = this.profilePath ? resolve(this.profilePath) : bundledPath;
+
+    if (this.profilePath && !existsSync(dataPath)) {
+      throw new Error(`Profile file not found: ${dataPath}`);
+    }
+
     const data = readFileSync(dataPath, 'utf-8');
     return JSON.parse(data) as InitialProfileData;
   }

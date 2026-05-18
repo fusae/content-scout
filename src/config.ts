@@ -16,6 +16,11 @@ export const config = {
   logLevel: process.env.LOG_LEVEL || 'info',
   logFile: process.env.LOG_FILE || './logs/app.log',
 
+  // 私有画像配置
+  profile: {
+    path: process.env.PROFILE_PATH || '',
+  },
+
   // OpenAI 配置（保留兼容旧配置）
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
@@ -39,7 +44,7 @@ export const config = {
 
   // X 账号配置
   xAccount: {
-    handle: process.env.X_ACCOUNT_HANDLE || 'rabbitrun_eth',
+    handle: process.env.X_ACCOUNT_HANDLE || 'example_creator',
   },
 
   // Reddit 配置：API 审批前使用 RSS 抓取公开 subreddit
@@ -56,6 +61,17 @@ export const config = {
     appSecret: process.env.LARK_APP_SECRET || '',
     baseId: process.env.LARK_BASE_ID || '',
     defaultReceiverId: process.env.FEISHU_DEFAULT_RECEIVER_ID || '',
+  },
+
+  // Turing 单任务模式（用于把推荐转成写作任务）
+  turing: {
+    baseUrl: process.env.TURING_BASE_URL || '',
+    apiToken: process.env.TURING_API_TOKEN || '',
+    articleAgent: process.env.TURING_ARTICLE_AGENT || 'opencode',
+    articleCwd: process.env.TURING_ARTICLE_CWD || '',
+    articleRules:
+      process.env.TURING_ARTICLE_RULES ||
+      '按当前工作区已有写文工作流执行；完成后在 [RESULT]...[/RESULT] 中返回最终文章路径或结果摘要。',
   },
 
   // 速率限制配置

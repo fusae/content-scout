@@ -8,7 +8,7 @@
 
 ### 1.1 目标
 
-为 X 账号 (@rabbitrun_eth) 提供智能内容策划服务：
+为 X 账号 (@example_creator) 提供智能内容策划服务：
 - 每日自动发现适合账号定位的热门话题
 - 生成符合个人风格的推文草稿
 - 通过飞书推送建议，用户手动发布
@@ -420,7 +420,7 @@ FEISHU_APP_SECRET=xxx
 FEISHU_BOT_NAME=内容策划助手
 
 # X 账号
-X_ACCOUNT_HANDLE=rabbitrun_eth
+X_ACCOUNT_HANDLE=example_creator
 
 # 调度
 CRON_SCHEDULE=0 9 * * *

@@ -1,1 +1,10 @@
+.DS_Store
+.env
 .worktrees/
+.run/
+.claude/
+node_modules/
+dist/
+logs/
+data/*.db*
+config/*.local.json

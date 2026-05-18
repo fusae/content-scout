@@ -1,12 +1,12 @@
 import cron from 'node-cron';
-import { ContentAggregator } from '../aggregator';
-import { ProfileManager } from '../profile';
-import { FilterEngine } from '../filter';
-import { DraftGenerator } from '../generator';
-import { FeishuClient } from '../feishu';
-import { FeedbackLearner } from '../feedback';
-import { DatabaseManager } from '../db';
-import { logger } from '../utils/logger';
+import { ContentAggregator } from '../aggregator/index.js';
+import { ProfileManager } from '../profile/index.js';
+import { FilterEngine } from '../filter/index.js';
+import { DraftGenerator } from '../generator/index.js';
+import { FeishuClient } from '../feishu/index.js';
+import { FeedbackLearner } from '../feedback/index.js';
+import { DatabaseManager } from '../db/index.js';
+import { logger } from '../utils/logger.js';
 
 export class Scheduler {
   private tasks: cron.ScheduledTask[] = [];

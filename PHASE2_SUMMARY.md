@@ -9,12 +9,12 @@ Phase 2 内容聚合层已完整实施并通过编译验证。
 ### 1. 核心组件
 
 #### 类型定义
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/types/content.ts`
+- `src/types/content.ts`
   - ContentItem 接口：统一的内容数据结构
   - ScraperStats 接口：爬虫统计信息
 
 #### 爬虫基础设施
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/scrapers/base.ts`
+- `src/scrapers/base.ts`
   - BaseScraper 抽象类
   - User-Agent 轮换
   - 带重试的 HTTP 请求
@@ -24,20 +24,20 @@ Phase 2 内容聚合层已完整实施并通过编译验证。
 ### 2. 平台爬虫（7个）
 
 **P0 - 核心平台**
-1. `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/scrapers/hackernews.ts` - Hacker News（官方 API）
-2. `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/scrapers/github-trending.ts` - GitHub Trending（Puppeteer）
-3. `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/scrapers/x-scraper.ts` - X/Twitter（Puppeteer，可能失败）
+1. `src/scrapers/hackernews.ts` - Hacker News（官方 API）
+2. `src/scrapers/github-trending.ts` - GitHub Trending（Puppeteer）
+3. `src/scrapers/x-scraper.ts` - X/Twitter（Puppeteer，可能失败）
 
 **P1 - 重要平台**
-4. `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/scrapers/zhihu.ts` - 知乎热榜（Puppeteer）
-5. `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/scrapers/producthunt.ts` - Product Hunt（GraphQL API）
+4. `src/scrapers/zhihu.ts` - 知乎热榜（Puppeteer）
+5. `src/scrapers/producthunt.ts` - Product Hunt（GraphQL API）
 
 **P2 - 补充平台**
-6. `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/scrapers/reddit.ts` - Reddit（公开 API）
-7. `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/scrapers/v2ex.ts` - V2EX（官方 API）
+6. `src/scrapers/reddit.ts` - Reddit（公开 API）
+7. `src/scrapers/v2ex.ts` - V2EX（官方 API）
 
 ### 3. 内容聚合器
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/aggregator/index.ts`
+- `src/aggregator/index.ts`
   - ContentAggregator 主类
   - 并发执行多个爬虫
   - 数据库级别去重
@@ -46,25 +46,25 @@ Phase 2 内容聚合层已完整实施并通过编译验证。
   - 详细统计信息
 
 ### 4. 数据库扩展
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/db/index.ts`
+- `src/db/index.ts`
   - 新增 `getContentByUrl()` 方法
   - 新增 `getContentByHash()` 方法
   - 新增 `deleteOldContent()` 方法
 
 ### 5. 主程序集成
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/index.ts`
+- `src/index.ts`
   - 集成 ContentAggregator
   - 定时任务：每小时聚合内容
   - 定时任务：每天清理过期内容
 
 ### 6. 测试脚本
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/test-aggregator.ts`
+- `src/test-aggregator.ts`
   - 分阶段测试所有平台
   - 显示数据库内容摘要
 
 ### 7. 配置更新
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/tsconfig.json` - 添加 DOM 库支持
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/package.json` - 添加 test:aggregator 脚本
+- `tsconfig.json` - 添加 DOM 库支持
+- `package.json` - 添加 test:aggregator 脚本
 
 ## 技术特点
 
@@ -135,4 +135,4 @@ npm start
 Phase 2 已完成，可以继续实施 Phase 3: AI 匹配引擎。
 
 详细文档请参考：
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/PHASE2_IMPLEMENTATION.md`
+- `PHASE2_IMPLEMENTATION.md`

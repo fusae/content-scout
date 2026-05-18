@@ -1,15 +1,15 @@
-import { DatabaseManager } from './db';
-import { ContentAggregator } from './aggregator';
-import { ProfileManager } from './profile';
-import { FilterEngine } from './filter';
-import { DraftGenerator } from './generator';
-import { FeishuClient } from './feishu';
-import { FeedbackLearner } from './feedback';
-import { Scheduler } from './scheduler';
-import { EmbeddingClient } from './ai/embedding';
-import { DeepSeekClient } from './ai/deepseek';
-import { logger } from './utils/logger';
-import { config } from './config';
+import { DatabaseManager } from './db/index.js';
+import { ContentAggregator } from './aggregator/index.js';
+import { ProfileManager } from './profile/index.js';
+import { FilterEngine } from './filter/index.js';
+import { DraftGenerator } from './generator/index.js';
+import { FeishuClient } from './feishu/index.js';
+import { FeedbackLearner } from './feedback/index.js';
+import { Scheduler } from './scheduler/index.js';
+import { EmbeddingClient } from './ai/embedding.js';
+import { DeepSeekClient } from './ai/deepseek.js';
+import { logger } from './utils/logger.js';
+import { config } from './config.js';
 
 async function main() {
   logger.info('========== X Content Scout 启动 ==========');
@@ -44,7 +44,8 @@ async function main() {
       config.deepseek.apiKey,
       config.deepseek.baseURL,
       config.embedding.baseURL,
-      config.embedding.model
+      config.embedding.model,
+      config.profile.path
     );
     const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
     const draftGenerator = new DraftGenerator(deepseekClient);
@@ -107,6 +108,7 @@ async function main() {
       logger.info('收到退出信号，正在关闭...');
       clearInterval(keepAlive);
       scheduler.stop();
+      feishuClient.close();
       db.close();
       logger.info('已安全退出');
       process.exit(0);

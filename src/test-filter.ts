@@ -34,7 +34,7 @@ async function testFilterEngine() {
   const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
 
   // 2. 获取或创建账号画像
-  const accountHandle = 'rabbitrun_eth';
+  const accountHandle = process.env.X_ACCOUNT_HANDLE || 'example_creator';
   let profile = await getOrCreateProfile(db, accountHandle);
 
   if (!profile) {
@@ -147,7 +147,12 @@ async function getOrCreateProfile(
   const profileManager = new ProfileManager(
     db,
     openaiKey,
-    accountHandle
+    accountHandle,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    process.env.PROFILE_PATH
   );
 
   try {

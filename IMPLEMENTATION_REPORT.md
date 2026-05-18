@@ -253,9 +253,9 @@ await feishuClient.pushRecommendations([
 
 ## 相关文档
 
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/PHASE_5_6_README.md` - 详细使用文档
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/generator/` - 草稿生成器源码
-- `/Users/jamesyu/Projects/x-content-scout/.claude/worktrees/phase-1-infrastructure/src/feishu/` - 飞书客户端源码
+- `PHASE_5_6_README.md` - 详细使用文档
+- `src/generator/` - 草稿生成器源码
+- `src/feishu/` - 飞书客户端源码
 
 ## 总结
 

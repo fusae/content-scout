@@ -4,7 +4,7 @@
 
 **X Content Scout** 是一个基于 AI 的 X 账号内容策划助手，能够自动发现适合你账号的热门话题，生成推文草稿，并通过飞书推送建议。
 
-**目标用户**: @rabbitrun_eth  
+**目标用户**: @example_creator  
 **实施日期**: 2026-05-12  
 **状态**: ✅ 核心功能已完成，可投入使用
 
@@ -159,7 +159,7 @@ LARK_BASE_ID=xxx
 FEISHU_DEFAULT_RECEIVER_ID=xxx
 
 # X 账号
-X_ACCOUNT_HANDLE=rabbitrun_eth
+X_ACCOUNT_HANDLE=example_creator
 
 # 数据库路径
 DB_PATH=./data/scout.db

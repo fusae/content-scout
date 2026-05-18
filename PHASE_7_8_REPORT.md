@@ -141,7 +141,7 @@ FEEDBACK_LEARNING_THRESHOLD=10      # 累积 10 次反馈触发学习
   ↓
 1. 内容聚合（7 个平台，约 100-200 条）
   ↓
-2. 加载账号画像（@rabbitrun_eth）
+2. 加载账号画像（@example_creator）
   ↓
 3. 智能过滤（Embedding 初筛 → AI 精排）
   ↓
