@@ -246,7 +246,7 @@ Duration: embedding=1200ms, ai=3500ms, total=4800ms
 ## 下一步
 
 Phase 5 将实现：
-- 推文草稿生成
+- 发布草稿生成
 - 飞书 Base 集成
 - 用户反馈收集
 - 持续学习优化

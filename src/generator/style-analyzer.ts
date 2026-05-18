@@ -19,7 +19,7 @@ export class StyleAnalyzer {
 - 平均长度：${writingStyle.avgLength} 字符
 - Emoji 使用：${writingStyle.emojiUsage}
 - 常用 Emoji：${writingStyle.commonEmojis.join(' ')}
-- 推文结构：${writingStyle.structure || '实用导向，避坑分享'}
+- 内容结构：${writingStyle.structure || '实用导向，避坑分享'}
 
 主题领域：
 ${topics.join(', ')}
@@ -35,16 +35,16 @@ ${audience}
   }
 
   /**
-   * 生成历史推文样本文本
+   * 生成历史内容样本文本
    */
-  static generateSampleTweetsText(profile: AccountProfile): string {
-    if (!profile.sampleTweets || profile.sampleTweets.length === 0) {
-      return '（无历史推文样本）';
+  static generateSamplePostsText(profile: AccountProfile): string {
+    if (!profile.samplePosts || profile.samplePosts.length === 0) {
+      return '（无历史内容样本）';
     }
 
-    return profile.sampleTweets
+    return profile.samplePosts
       .slice(0, 5) // 最多取 5 条
-      .map((tweet, index) => `${index + 1}. ${tweet.text} (${tweet.likes} likes)`)
+      .map((post, index) => `${index + 1}. ${post.text} (${post.likes} likes)`)
       .join('\n---\n');
   }
 

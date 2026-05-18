@@ -4,7 +4,7 @@
  * 测试流程：
  * 1. 加载账号画像
  * 2. 获取筛选后的内容
- * 3. 生成推文草稿
+ * 3. 生成发布草稿
  * 4. 推送到飞书
  */
 
@@ -32,9 +32,9 @@ async function main() {
   try {
     // 1. 加载账号画像
     logger.info('Step 1: Loading account profile...');
-    const profile = db.getAccountProfile(config.xAccount.handle);
+    const profile = db.getAccountProfile(config.account.handle);
     if (!profile) {
-      throw new Error(`Account profile not found: ${config.xAccount.handle}`);
+      throw new Error(`Account profile not found: ${config.account.handle}`);
     }
 
     // 解析 JSON 字段
@@ -47,8 +47,12 @@ async function main() {
       interests: profile.interests ? JSON.parse(profile.interests) : [],
       audience: profile.audience || '',
       interestVector: profile.interest_vector ? JSON.parse(profile.interest_vector) : [],
-      tweetCount: profile.tweet_count || 0,
-      sampleTweets: profile.sample_tweets ? JSON.parse(profile.sample_tweets) : [],
+      postCount: profile.post_count ?? profile.tweet_count ?? 0,
+      samplePosts: profile.sample_posts
+        ? JSON.parse(profile.sample_posts)
+        : profile.sample_tweets
+          ? JSON.parse(profile.sample_tweets)
+          : [],
       lastUpdated: profile.last_updated ? new Date(profile.last_updated) : undefined,
     };
 

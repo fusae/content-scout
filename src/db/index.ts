@@ -15,10 +15,12 @@ export interface AccountProfile {
   writing_style?: string; // JSON object
   interests?: string; // JSON array
   audience?: string; // 目标受众描述
-  sample_tweets?: string; // JSON array
+  sample_posts?: string; // JSON array
+  sample_tweets?: string; // legacy JSON array
   interest_vector?: string; // Serialized vector (768-dim)
   last_updated?: string;
-  tweet_count?: number;
+  post_count?: number;
+  tweet_count?: number; // legacy field
 }
 
 export interface ContentPool {
@@ -70,7 +72,41 @@ export class DatabaseManager {
     const schemaPath = join(__dirname, 'schema.sql');
     const schema = readFileSync(schemaPath, 'utf-8');
     this.db.exec(schema);
+    this.migrateAccountProfileSchema();
     logger.info('Database schema initialized successfully');
+  }
+
+  private migrateAccountProfileSchema(): void {
+    const columns = this.db
+      .prepare(`PRAGMA table_info(account_profile)`)
+      .all() as Array<{ name: string }>;
+    const names = new Set(columns.map(column => column.name));
+
+    if (!names.has('sample_posts')) {
+      this.db.exec(`ALTER TABLE account_profile ADD COLUMN sample_posts TEXT`);
+    }
+
+    if (!names.has('post_count')) {
+      this.db.exec(`ALTER TABLE account_profile ADD COLUMN post_count INTEGER DEFAULT 0`);
+    }
+
+    if (names.has('sample_tweets')) {
+      this.db.exec(`
+        UPDATE account_profile
+        SET sample_posts = COALESCE(sample_posts, sample_tweets)
+        WHERE sample_tweets IS NOT NULL
+      `);
+    }
+
+    if (names.has('tweet_count')) {
+      this.db.exec(`
+        UPDATE account_profile
+        SET post_count = CASE
+          WHEN post_count IS NULL OR post_count = 0 THEN tweet_count
+          ELSE post_count
+        END
+      `);
+    }
   }
 
   /**
@@ -78,7 +114,7 @@ export class DatabaseManager {
    */
   upsertAccountProfile(profile: AccountProfile): void {
     const stmt = this.db.prepare(`
-      INSERT INTO account_profile (account_handle, bio, topics, writing_style, interests, audience, sample_tweets, interest_vector, tweet_count)
+      INSERT INTO account_profile (account_handle, bio, topics, writing_style, interests, audience, sample_posts, interest_vector, post_count)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(account_handle) DO UPDATE SET
         bio = excluded.bio,
@@ -86,9 +122,9 @@ export class DatabaseManager {
         writing_style = excluded.writing_style,
         interests = excluded.interests,
         audience = excluded.audience,
-        sample_tweets = excluded.sample_tweets,
+        sample_posts = excluded.sample_posts,
         interest_vector = excluded.interest_vector,
-        tweet_count = excluded.tweet_count,
+        post_count = excluded.post_count,
         last_updated = CURRENT_TIMESTAMP
     `);
     stmt.run(
@@ -98,9 +134,9 @@ export class DatabaseManager {
       profile.writing_style || null,
       profile.interests || null,
       profile.audience || null,
-      profile.sample_tweets || null,
+      profile.sample_posts || null,
       profile.interest_vector || null,
-      profile.tweet_count || 0
+      profile.post_count || 0
     );
     logger.debug(`Account profile upserted: ${profile.account_handle}`);
   }

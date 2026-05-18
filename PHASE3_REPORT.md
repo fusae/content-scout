@@ -11,7 +11,7 @@ Phase 3 账号画像引擎已完成实施，所有功能模块已实现并通过
 - **更新**: 扩展 `account_profile` 表，添加字段：
   - `interests` (TEXT) - 兴趣领域 JSON 数组
   - `audience` (TEXT) - 目标受众描述
-  - `sample_tweets` (TEXT) - 样本推文 JSON 数组
+  - `sample_posts` (TEXT) - 内容样本 JSON 数组
   - `interest_vector` 注释更新为 768 维向量
 
 - **文件**: `src/db/index.ts`
@@ -26,13 +26,13 @@ Phase 3 账号画像引擎已完成实施，所有功能模块已实现并通过
   - 写作风格: 专业/轻松，平均 98 字，很少使用 emoji
   - 兴趣: AI 工具实战、开源自动化、Codex 多账号与集成
   - 受众: AI 开发者、Codex 用户、开源爱好者
-  - 样本推文: 2 条代表性推文
+  - 内容样本: 2 条代表性推文
 
 ### 3. 类型定义
 - **文件**: `src/profile/types.ts`
 - **内容**:
   - `WritingStyle` 接口 - 写作风格定义
-  - `SampleTweet` 接口 - 样本推文格式
+  - `SamplePost` 接口 - 内容样本格式
   - `AccountProfile` 接口 - 完整账号画像结构
   - `InitialProfileData` 接口 - 初始数据格式
 
@@ -50,8 +50,8 @@ Phase 3 账号画像引擎已完成实施，所有功能模块已实现并通过
 - **文件**: `src/ai/deepseek.ts`
 - **功能**:
   - 深度分析账号画像，提取细粒度风格特征
-  - 基于样本推文分析写作模式、内容策略、受众洞察
-  - 生成符合账号风格的推文草稿
+  - 基于内容样本分析写作模式、内容策略、受众洞察
+  - 生成符合账号风格的发布草稿
   - 支持 JSON 格式输出
 
 ### 5. 向量化模块
@@ -77,13 +77,13 @@ Phase 3 账号画像引擎已完成实施，所有功能模块已实现并通过
 - **新增配置**:
   - `deepseek.apiKey` - DeepSeek API 密钥
   - `deepseek.baseURL` - DeepSeek API 端点
-  - `xAccount.handle` - X 账号名称
+  - `account.handle` - 内容账号名称
 
 - **文件**: `.env.example`
 - **新增环境变量**:
   - `DEEPSEEK_API_KEY`
   - `DEEPSEEK_BASE_URL`
-  - `X_ACCOUNT_HANDLE`
+  - `ACCOUNT_HANDLE`
 
 ### 8. 主程序集成
 - **文件**: `src/index.ts`
@@ -141,7 +141,7 @@ Phase 3 账号画像引擎已完成实施，所有功能模块已实现并通过
 需要在 `.env` 文件中配置：
 ```bash
 OPENAI_API_KEY=sk-xxx              # 必需，用于 embedding
-X_ACCOUNT_HANDLE=example_creator     # 必需，账号名称
+ACCOUNT_HANDLE=example_creator     # 必需，账号名称
 DEEPSEEK_API_KEY=sk-xxx            # 可选，用于深度分析
 ```
 
@@ -180,5 +180,5 @@ const analysis = await profileManager.deepAnalyze();
 
 Phase 3 已完成，可以继续实施：
 - **Phase 4**: 内容匹配引擎（使用画像向量进行内容推荐）
-- **Phase 5**: 推文生成器（基于画像生成推文草稿）
+- **Phase 5**: 草稿生成器（基于画像生成发布草稿）
 - **Phase 6**: 反馈学习系统（根据用户反馈优化画像）

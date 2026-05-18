@@ -65,7 +65,7 @@ export class CardBuilder {
         {
           tag: 'div',
           text: {
-            content: '**推文草稿：**',
+            content: '**发布草稿：**',
             tag: 'lark_md',
           },
         },
@@ -239,7 +239,7 @@ export class CardBuilder {
         {
           tag: 'div',
           text: {
-            content: `为你精选了 **${count}** 条优质内容，每条都附带 3 个不同风格的推文草稿。\n\n你可以直接复制发布，也可以把合适的话题一键转成文章任务。`,
+            content: `为你精选了 **${count}** 条优质内容，每条都附带 3 个不同风格的发布草稿。\n\n你可以直接复制发布，也可以把合适的话题一键转成文章任务。`,
             tag: 'lark_md',
           },
         },

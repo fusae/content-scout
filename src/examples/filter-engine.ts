@@ -10,7 +10,7 @@ import { DatabaseManager } from '../db/index.js';
 import { ProfileManager } from '../profile/index.js';
 import { FilteredContent } from '../filter/types.js';
 
-const accountHandle = process.env.X_ACCOUNT_HANDLE || 'example_creator';
+const accountHandle = process.env.ACCOUNT_HANDLE || process.env.X_ACCOUNT_HANDLE || 'example_creator';
 
 /**
  * 示例 1: 基本使用

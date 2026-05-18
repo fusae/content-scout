@@ -1,6 +1,6 @@
-# X Content Scout
+# Content Scout
 
-面向 X 创作者的内容搜集、筛选、草稿生成和飞书推送助手。
+面向内容账号的内容搜集、筛选、草稿生成和飞书推送助手。
 
 ## 项目结构
 
@@ -42,11 +42,12 @@ PROFILE_PATH=./config/profile.local.json
 EMBEDDING_API_KEY=your_dashscope_api_key
 LARK_APP_ID=your_lark_app_id
 LARK_APP_SECRET=your_lark_app_secret
-X_ACCOUNT_HANDLE=your_x_handle
+ACCOUNT_HANDLE=your_account_handle
+ENABLED_SOURCES=hackernews,github,zhihu,reddit,v2ex
 REDDIT_SUBREDDITS=LocalLLaMA,OpenAI,ChatGPT,artificial,MachineLearning,programming,startups,technology
 ```
 
-`config/profile.local.json` 用来存放你的账号画像、兴趣和样例内容；它已被 `.gitignore` 排除，不会进入仓库。
+`config/profile.local.json` 用来存放你的账号画像、兴趣和样例内容；它已被 `.gitignore` 排除，不会进入仓库。字段使用通用命名：`postCount`、`samplePosts`。
 
 ### 3. 初始化数据库
 
@@ -79,7 +80,7 @@ npm start
 ## 数据库表结构
 
 ### account_profile (账号画像)
-- 存储 X 账号的基本信息和兴趣向量
+- 存储内容账号的基本信息和兴趣向量
 
 ### content_pool (内容池)
 - 存储收集的内容素材
@@ -106,9 +107,10 @@ npm start
 
 ## 内容渠道
 
-- 可直接运行：Hacker News、GitHub Trending、知乎日报、Reddit RSS、V2EX
-- 需要凭证：Product Hunt（`PRODUCTHUNT_API_TOKEN`）
-- 暂不处理：X（`X_BEARER_TOKEN`，API 成本较高）
+- 通过 `ENABLED_SOURCES` 选择启用渠道
+- 可直接运行：`hackernews`、`github`、`zhihu`、`reddit`、`v2ex`
+- 需要凭证：`producthunt`（`PRODUCTHUNT_API_TOKEN`）
+- 成本较高：`x`（`X_BEARER_TOKEN`）
 
 ## Phase 1 完成状态
 

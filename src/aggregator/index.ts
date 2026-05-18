@@ -12,6 +12,7 @@ import {
   V2EXScraper,
   BaseScraper,
 } from '../scrapers/index.js';
+import { config } from '../config.js';
 import crypto from 'crypto';
 
 /**
@@ -22,25 +23,34 @@ export class ContentAggregator {
   private scrapers: Map<string, BaseScraper>;
   private rateLimiter: RateLimiter;
 
-  constructor(db: DatabaseManager) {
+  constructor(db: DatabaseManager, enabledSources: string[] = config.sources.enabled) {
     this.db = db;
     this.rateLimiter = new RateLimiter({
       maxConcurrent: 3,
       minDelay: 1000, // 1秒最小间隔
     });
 
-    // 初始化所有爬虫
-    this.scrapers = new Map<string, BaseScraper>([
-      ['hackernews', new HackerNewsScraper(this.rateLimiter)],
-      ['github', new GitHubTrendingScraper(this.rateLimiter)],
-      ['x', new XScraper(this.rateLimiter)],
-      ['zhihu', new ZhihuScraper(this.rateLimiter)],
-      ['producthunt', new ProductHuntScraper(this.rateLimiter)],
-      ['reddit', new RedditScraper(this.rateLimiter)],
-      ['v2ex', new V2EXScraper(this.rateLimiter)],
+    const scraperFactories = new Map<string, () => BaseScraper>([
+      ['hackernews', () => new HackerNewsScraper(this.rateLimiter)],
+      ['github', () => new GitHubTrendingScraper(this.rateLimiter)],
+      ['x', () => new XScraper(this.rateLimiter)],
+      ['zhihu', () => new ZhihuScraper(this.rateLimiter)],
+      ['producthunt', () => new ProductHuntScraper(this.rateLimiter)],
+      ['reddit', () => new RedditScraper(this.rateLimiter)],
+      ['v2ex', () => new V2EXScraper(this.rateLimiter)],
     ]);
 
-    logger.info(`ContentAggregator initialized with ${this.scrapers.size} scrapers`);
+    this.scrapers = new Map<string, BaseScraper>();
+    for (const source of enabledSources) {
+      const createScraper = scraperFactories.get(source);
+      if (createScraper) {
+        this.scrapers.set(source, createScraper());
+      } else {
+        logger.warn(`Unknown configured source: ${source}`);
+      }
+    }
+
+    logger.info(`ContentAggregator initialized with sources: ${Array.from(this.scrapers.keys()).join(', ')}`);
   }
 
   /**

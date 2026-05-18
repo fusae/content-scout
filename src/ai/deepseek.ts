@@ -19,13 +19,13 @@ export class DeepSeekClient {
 
   /**
    * 深度分析账号画像
-   * 基于样本推文提取风格特征
+   * 基于样本内容提取风格特征
    */
-  async analyzeProfile(sampleTweets: string[], currentProfile: any): Promise<any> {
+  async analyzeProfile(samplePosts: string[], currentProfile: any): Promise<any> {
     try {
       logger.info('Starting deep profile analysis with DeepSeek');
 
-      const prompt = this.buildAnalysisPrompt(sampleTweets, currentProfile);
+      const prompt = this.buildAnalysisPrompt(samplePosts, currentProfile);
       const startTime = Date.now();
 
       const response = await this.client.chat.completions.create({
@@ -33,7 +33,7 @@ export class DeepSeekClient {
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的社交媒体内容分析师，擅长分析推文风格和受众特征。',
+            content: '你是一个专业的社交媒体内容分析师，擅长分析内容风格和受众特征。',
           },
           {
             role: 'user',
@@ -58,9 +58,9 @@ export class DeepSeekClient {
   /**
    * 构建分析提示词
    */
-  private buildAnalysisPrompt(sampleTweets: string[], currentProfile: any): string {
+  private buildAnalysisPrompt(samplePosts: string[], currentProfile: any): string {
     return `
-请分析以下推文样本，提取账号的深度画像特征：
+请分析以下内容样本，提取账号的深度画像特征：
 
 ## 当前画像
 - 主题: ${currentProfile.topics?.join(', ')}
@@ -68,8 +68,8 @@ export class DeepSeekClient {
 - 受众: ${currentProfile.audience}
 - 语气: ${currentProfile.writingStyle?.tone}
 
-## 推文样本
-${sampleTweets.map((tweet, i) => `${i + 1}. ${tweet}`).join('\n\n')}
+## 内容样本
+${samplePosts.map((post, i) => `${i + 1}. ${post}`).join('\n\n')}
 
 请以 JSON 格式返回以下分析结果：
 {
@@ -97,14 +97,14 @@ ${sampleTweets.map((tweet, i) => `${i + 1}. ${tweet}`).join('\n\n')}
   }
 
   /**
-   * 生成推文草稿
+   * 生成发布草稿
    */
-  async generateTweetDraft(topic: string, profile: any): Promise<string> {
+  async generatePostDraft(topic: string, profile: any): Promise<string> {
     try {
-      logger.info(`Generating tweet draft for topic: ${topic}`);
+      logger.info(`Generating post draft for topic: ${topic}`);
 
       const prompt = `
-基于以下账号画像，为主题"${topic}"生成一条推文草稿：
+基于以下账号画像，为主题"${topic}"生成一条发布草稿：
 
 ## 账号画像
 - 主题: ${profile.topics?.join(', ')}
@@ -118,7 +118,7 @@ ${sampleTweets.map((tweet, i) => `${i + 1}. ${tweet}`).join('\n\n')}
 3. 内容有价值，能引发思考或互动
 4. 不使用或少用 emoji（除非画像中明确使用）
 
-请直接返回推文内容，不要额外说明。
+请直接返回草稿内容，不要额外说明。
 `;
 
       const response = await this.client.chat.completions.create({
@@ -137,10 +137,10 @@ ${sampleTweets.map((tweet, i) => `${i + 1}. ${tweet}`).join('\n\n')}
       });
 
       const draft = response.choices[0].message.content || '';
-      logger.info('Tweet draft generated successfully');
+      logger.info('Post draft generated successfully');
       return draft.trim();
     } catch (error) {
-      logger.error('Failed to generate tweet draft:', error);
+      logger.error('Failed to generate post draft:', error);
       throw error;
     }
   }

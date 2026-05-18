@@ -25,8 +25,8 @@ import { logger } from './utils/logger.js';
  * 完整工作流
  */
 async function runCompleteWorkflow() {
-  logger.info('=== X Content Scout - Complete Workflow ===');
-  logger.info(`Account: @${config.xAccount.handle}`);
+  logger.info('=== Content Scout - Complete Workflow ===');
+  logger.info(`Account: @${config.account.handle}`);
   logger.info(`Time: ${new Date().toISOString()}`);
 
   // 验证配置
@@ -53,7 +53,7 @@ async function runCompleteWorkflow() {
   const profileManager = new ProfileManager(
     db,
     config.embedding.apiKey,
-    config.xAccount.handle,
+    config.account.handle,
     config.deepseek.apiKey,
     config.deepseek.baseURL,
     config.embedding.baseURL,

@@ -34,7 +34,7 @@ async function testFilterEngine() {
   const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
 
   // 2. 获取或创建账号画像
-  const accountHandle = process.env.X_ACCOUNT_HANDLE || 'example_creator';
+  const accountHandle = process.env.ACCOUNT_HANDLE || process.env.X_ACCOUNT_HANDLE || 'example_creator';
   let profile = await getOrCreateProfile(db, accountHandle);
 
   if (!profile) {
@@ -130,7 +130,7 @@ async function getOrCreateProfile(
       interests: dbProfile.interests ? JSON.parse(dbProfile.interests) : [],
       audience: dbProfile.audience || '',
       interestVector: dbProfile.interest_vector ? JSON.parse(dbProfile.interest_vector) : [],
-      tweetCount: dbProfile.tweet_count || 0,
+      postCount: dbProfile.post_count ?? dbProfile.tweet_count ?? 0,
     };
   }
 

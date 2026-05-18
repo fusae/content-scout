@@ -42,9 +42,17 @@ export const config = {
     baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
   },
 
-  // X 账号配置
-  xAccount: {
-    handle: process.env.X_ACCOUNT_HANDLE || 'example_creator',
+  // 内容账号配置
+  account: {
+    handle: process.env.ACCOUNT_HANDLE || process.env.X_ACCOUNT_HANDLE || 'example_creator',
+  },
+
+  // 渠道配置
+  sources: {
+    enabled: (process.env.ENABLED_SOURCES || 'hackernews,github,zhihu,reddit,v2ex')
+      .split(',')
+      .map(source => source.trim().toLowerCase())
+      .filter(Boolean),
   },
 
   // Reddit 配置：API 审批前使用 RSS 抓取公开 subreddit

@@ -14,7 +14,7 @@ import { config } from './config.js';
 async function main() {
   logger.info('========== X Content Scout 启动 ==========');
   logger.info(`环境: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`账号: ${config.xAccount.handle}`);
+  logger.info(`账号: ${config.account.handle}`);
 
   try {
     // 1. 初始化数据库
@@ -40,7 +40,7 @@ async function main() {
     const profileManager = new ProfileManager(
       db,
       config.embedding.apiKey,
-      config.xAccount.handle,
+      config.account.handle,
       config.deepseek.apiKey,
       config.deepseek.baseURL,
       config.embedding.baseURL,

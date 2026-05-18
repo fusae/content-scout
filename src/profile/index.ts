@@ -71,8 +71,8 @@ export class ProfileManager {
         writingStyle: initialData.writingStyle,
         interests: initialData.interests,
         audience: initialData.audience,
-        tweetCount: initialData.tweetCount,
-        sampleTweets: initialData.sampleTweets,
+        postCount: initialData.postCount ?? initialData.tweetCount ?? 0,
+        samplePosts: initialData.samplePosts ?? initialData.sampleTweets ?? [],
       };
 
       // 生成 embedding 向量
@@ -112,8 +112,12 @@ export class ProfileManager {
         audience: dbProfile.audience || '',
         interestVector: dbProfile.interest_vector ? JSON.parse(dbProfile.interest_vector) : undefined,
         lastUpdated: dbProfile.last_updated ? new Date(dbProfile.last_updated) : undefined,
-        tweetCount: dbProfile.tweet_count || 0,
-        sampleTweets: dbProfile.sample_tweets ? JSON.parse(dbProfile.sample_tweets) : undefined,
+        postCount: dbProfile.post_count ?? dbProfile.tweet_count ?? 0,
+        samplePosts: dbProfile.sample_posts
+          ? JSON.parse(dbProfile.sample_posts)
+          : dbProfile.sample_tweets
+            ? JSON.parse(dbProfile.sample_tweets)
+            : undefined,
       };
 
       return profile;
@@ -195,11 +199,11 @@ export class ProfileManager {
       logger.info('Starting deep analysis with DeepSeek...');
 
       const profile = await this.getProfile();
-      if (!profile || !profile.sampleTweets) {
-        throw new Error('Profile or sample tweets not found');
+      if (!profile || !profile.samplePosts) {
+        throw new Error('Profile or sample posts not found');
       }
 
-      const sampleTexts = profile.sampleTweets.map(t => t.text);
+      const sampleTexts = profile.samplePosts.map(post => post.text);
       const analysis = await this.deepseekClient.analyzeProfile(sampleTexts, profile);
 
       logger.info('Deep analysis completed');
@@ -236,9 +240,9 @@ export class ProfileManager {
       writing_style: JSON.stringify(profile.writingStyle),
       interests: JSON.stringify(profile.interests),
       audience: profile.audience,
-      sample_tweets: profile.sampleTweets ? JSON.stringify(profile.sampleTweets) : undefined,
+      sample_posts: profile.samplePosts ? JSON.stringify(profile.samplePosts) : undefined,
       interest_vector: profile.interestVector ? JSON.stringify(profile.interestVector) : undefined,
-      tweet_count: profile.tweetCount,
+      post_count: profile.postCount,
     });
   }
 }

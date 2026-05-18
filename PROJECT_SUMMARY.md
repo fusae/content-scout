@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-**X Content Scout** 是一个基于 AI 的 X 账号内容策划助手，能够自动发现适合你账号的热门话题，生成推文草稿，并通过飞书推送建议。
+**X Content Scout** 是一个基于 AI 的 内容账号策划助手，能够自动发现适合你账号的热门话题，生成发布草稿，并通过飞书推送建议。
 
 **目标用户**: @example_creator  
 **实施日期**: 2026-05-12  
@@ -55,7 +55,7 @@
   - 分享型：简洁介绍 + 推荐理由
   - 提问型：引发讨论的角度
 - 严格字数控制（≤280 字符）
-- 风格模仿（基于你的历史推文）
+- 风格模仿（基于你的历史内容）
 
 ### Phase 6: 飞书推送层 ✅
 - 飞书 SDK 集成
@@ -158,8 +158,8 @@ LARK_APP_SECRET=xxx
 LARK_BASE_ID=xxx
 FEISHU_DEFAULT_RECEIVER_ID=xxx
 
-# X 账号
-X_ACCOUNT_HANDLE=example_creator
+# 内容账号
+ACCOUNT_HANDLE=example_creator
 
 # 数据库路径
 DB_PATH=./data/scout.db
@@ -263,7 +263,7 @@ npm run workflow
 - 持续学习优化
 
 ### 2. 风格模仿
-- 分析历史推文风格
+- 分析历史内容风格
 - 严格控制字数和语气
 - 生成符合个人风格的草稿
 

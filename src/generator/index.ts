@@ -7,7 +7,7 @@ import { logger } from '../utils/logger.js';
 
 /**
  * 草稿生成器
- * 为筛选后的内容生成多个风格的推文草稿
+ * 为筛选后的内容生成多个风格的发布草稿
  */
 export class DraftGenerator {
   private readonly DEFAULT_STYLES: DraftStyle[] = ['opinion', 'share', 'question'];
@@ -100,16 +100,16 @@ export class DraftGenerator {
     _options: Required<DraftGenerationOptions>
   ): string {
     const styleDescription = StyleAnalyzer.generateStyleDescription(profile);
-    const sampleTweets = StyleAnalyzer.generateSampleTweetsText(profile);
+    const samplePosts = StyleAnalyzer.generateSamplePostsText(profile);
     const targetLength = StyleAnalyzer.calculateTargetLength(profile);
     const emojiStrategy = StyleAnalyzer.analyzeEmojiStrategy(profile);
 
-    const prompt = `你是一个推文写手，需要模仿特定账号的风格写推文。
+    const prompt = `你是一个内容写手，需要模仿特定账号的风格写短内容草稿。
 
 ${styleDescription}
 
-历史推文样本：
-${sampleTweets}
+历史内容样本：
+${samplePosts}
 
 原始内容：
 标题：${content.content.title}
@@ -117,7 +117,7 @@ ${sampleTweets}
 来源：${content.content.url}
 推荐理由：${content.aiReason || '相关度高'}
 
-任务：生成 3 个不同风格的推文草稿
+任务：生成 3 个不同风格的发布草稿
 
 1. **观点型（opinion）**：提出你的见解和评论，表达独特观点
 2. **分享型（share）**：简洁介绍 + 推荐理由，引导读者点击
@@ -127,23 +127,23 @@ ${sampleTweets}
 - 严格模仿账号的语气和风格
 - 长度控制在 ${targetLength.min} 到 ${targetLength.max} 字符
 - ${emojiStrategy}
-- 链接放在推文末尾，用 [链接] 占位
+- 链接放在草稿末尾，用 [链接] 占位
 - 每个草稿附带生成理由（为什么这样写）
 
 返回 JSON 格式（纯 JSON，不要 markdown 代码块）：
 [
   {
-    "content": "推文内容 [链接]",
+    "content": "草稿内容 [链接]",
     "style": "opinion",
     "reasoning": "为什么这样写"
   },
   {
-    "content": "推文内容 [链接]",
+    "content": "草稿内容 [链接]",
     "style": "share",
     "reasoning": "为什么这样写"
   },
   {
-    "content": "推文内容 [链接]",
+    "content": "草稿内容 [链接]",
     "style": "question",
     "reasoning": "为什么这样写"
   }

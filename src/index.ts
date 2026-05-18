@@ -19,14 +19,14 @@ async function main() {
     logger.info('Application initialized successfully');
     logger.info(`Database: ${config.dbPath}`);
     logger.info(`Log level: ${config.logLevel}`);
-    logger.info(`X Account: @${config.xAccount.handle}`);
+    logger.info(`Account: @${config.account.handle}`);
 
     // 初始化账号画像管理器
     logger.info('Initializing profile manager...');
     const profileManager = new ProfileManager(
       db,
       config.embedding.apiKey,
-      config.xAccount.handle,
+      config.account.handle,
       config.deepseek.apiKey || undefined,
       config.deepseek.baseURL,
       config.embedding.baseURL,

@@ -105,7 +105,7 @@ export class Scheduler {
       }
 
       // 4. 生成草稿
-      logger.info('Step 4/5: 生成推文草稿');
+      logger.info('Step 4/5: 生成发布草稿');
       const recommendations = [];
       for (const content of filtered) {
         const draftResult = await this.draftGenerator.generateDrafts(content, profile);

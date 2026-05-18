@@ -73,7 +73,7 @@ export class AIRanker {
       })
       .join('\n\n');
 
-    return `你是一个 X 账号内容策划专家。
+    return `你是一个内容账号策划专家。
 
 账号画像：
 - 账号：@${profile.accountHandle}

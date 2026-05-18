@@ -21,8 +21,8 @@
     "开源项目"
   ],
   "audience": "对 AI 工具、自动化和内容创作感兴趣的中文读者",
-  "tweetCount": 2,
-  "sampleTweets": [
+  "postCount": 2,
+  "samplePosts": [
     {
       "text": "最近把一个重复流程接进自动化后，真正省下来的不是点击次数，而是每天重新进入状态的时间。",
       "likes": 8
