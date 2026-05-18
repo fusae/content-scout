@@ -71,17 +71,6 @@ export const config = {
     defaultReceiverId: process.env.FEISHU_DEFAULT_RECEIVER_ID || '',
   },
 
-  // Turing 单任务模式（用于把推荐转成写作任务）
-  turing: {
-    baseUrl: process.env.TURING_BASE_URL || '',
-    apiToken: process.env.TURING_API_TOKEN || '',
-    articleAgent: process.env.TURING_ARTICLE_AGENT || 'opencode',
-    articleCwd: process.env.TURING_ARTICLE_CWD || '',
-    articleRules:
-      process.env.TURING_ARTICLE_RULES ||
-      '按当前工作区已有写文工作流执行；完成后在 [RESULT]...[/RESULT] 中返回最终文章路径或结果摘要。',
-  },
-
   // 速率限制配置
   rateLimit: {
     maxConcurrent: parseInt(process.env.MAX_CONCURRENT_REQUESTS || '3', 10),

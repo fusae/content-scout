@@ -128,19 +128,6 @@ export class CardBuilder {
             {
               tag: 'button',
               text: {
-                content: '✍️ 写成文章',
-                tag: 'plain_text',
-              },
-              type: 'primary',
-              value: {
-                action: 'article',
-                content_id: content.contentId,
-                recommendation_id: recommendationId,
-              } as CardActionValue,
-            },
-            {
-              tag: 'button',
-              text: {
                 content: '👎 不感兴趣',
                 tag: 'plain_text',
               },
@@ -239,7 +226,7 @@ export class CardBuilder {
         {
           tag: 'div',
           text: {
-            content: `为你精选了 **${count}** 条优质内容，每条都附带 3 个不同风格的发布草稿。\n\n你可以直接复制发布，也可以把合适的话题一键转成文章任务。`,
+            content: `为你精选了 **${count}** 条优质内容，每条都附带 3 个不同风格的发布草稿。\n\n你可以直接复制发布，也可以标记不感兴趣来优化后续推荐。`,
             tag: 'lark_md',
           },
         },

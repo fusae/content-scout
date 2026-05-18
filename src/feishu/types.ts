@@ -8,7 +8,7 @@ import { Draft } from '../generator/types.js';
 /**
  * 飞书卡片操作类型
  */
-export type CardActionType = 'copy' | 'reject' | 'view' | 'article';
+export type CardActionType = 'copy' | 'reject' | 'view';
 
 /**
  * 飞书卡片操作数据
