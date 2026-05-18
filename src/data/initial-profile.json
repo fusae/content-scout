@@ -1,0 +1,35 @@
+{
+  "accountHandle": "example_creator",
+  "bio": "分享 AI 工具、自动化和内容创作实践",
+  "topics": [
+    "AI 工具实战",
+    "工作流自动化",
+    "内容创作",
+    "独立开发"
+  ],
+  "writingStyle": {
+    "tone": "专业/轻松",
+    "avgLength": 120,
+    "emojiUsage": "很少",
+    "commonEmojis": [],
+    "structure": "问题描述 + 实操拆解 + 结论"
+  },
+  "interests": [
+    "AI 工具",
+    "创作者工作流",
+    "知识管理",
+    "开源项目"
+  ],
+  "audience": "对 AI 工具、自动化和内容创作感兴趣的中文读者",
+  "tweetCount": 2,
+  "sampleTweets": [
+    {
+      "text": "最近把一个重复流程接进自动化后，真正省下来的不是点击次数，而是每天重新进入状态的时间。",
+      "likes": 8
+    },
+    {
+      "text": "一个工具值不值得长期用，关键不是功能多，而是能不能稳定进入你的工作流。",
+      "likes": 12
+    }
+  ]
+}
