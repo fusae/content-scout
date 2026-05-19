@@ -1,6 +1,7 @@
 import * as lark from '@larksuiteoapi/node-sdk';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { retry, retryStrategies } from '../utils/retry.js';
 
 /**
  * 飞书客户端封装
@@ -40,16 +41,23 @@ export class LarkClient {
     receiveIdType: 'open_id' | 'user_id' | 'email' = 'open_id'
   ): Promise<{ message_id: string }> {
     try {
-      const response = await this.client.im.message.create({
-        params: {
-          receive_id_type: receiveIdType,
-        },
-        data: {
-          receive_id: receiveId,
-          msg_type: 'interactive',
-          content: JSON.stringify(card),
-        },
-      });
+      const response = await retry(
+        () => this.client.im.message.create({
+          params: {
+            receive_id_type: receiveIdType,
+          },
+          data: {
+            receive_id: receiveId,
+            msg_type: 'interactive',
+            content: JSON.stringify(card),
+          },
+        }),
+        {
+          maxAttempts: 3,
+          initialDelay: 1000,
+          shouldRetry: this.shouldRetryLarkRequest,
+        }
+      );
 
       if (response.code !== 0) {
         throw new Error(`Failed to send card: ${response.msg}`);
@@ -72,16 +80,23 @@ export class LarkClient {
     receiveIdType: 'open_id' | 'user_id' | 'email' = 'open_id'
   ): Promise<{ message_id: string }> {
     try {
-      const response = await this.client.im.message.create({
-        params: {
-          receive_id_type: receiveIdType,
-        },
-        data: {
-          receive_id: receiveId,
-          msg_type: 'text',
-          content: JSON.stringify({ text }),
-        },
-      });
+      const response = await retry(
+        () => this.client.im.message.create({
+          params: {
+            receive_id_type: receiveIdType,
+          },
+          data: {
+            receive_id: receiveId,
+            msg_type: 'text',
+            content: JSON.stringify({ text }),
+          },
+        }),
+        {
+          maxAttempts: 3,
+          initialDelay: 1000,
+          shouldRetry: this.shouldRetryLarkRequest,
+        }
+      );
 
       if (response.code !== 0) {
         throw new Error(`Failed to send text: ${response.msg}`);
@@ -93,6 +108,14 @@ export class LarkClient {
       logger.error('Failed to send text:', error);
       throw error;
     }
+  }
+
+  private shouldRetryLarkRequest(error: Error): boolean {
+    return (
+      retryStrategies.serverError(error) ||
+      retryStrategies.networkError(error) ||
+      retryStrategies.rateLimitError(error)
+    );
   }
 
   /**

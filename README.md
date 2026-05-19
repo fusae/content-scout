@@ -258,6 +258,8 @@ x-content-scout/
 ENABLED_SOURCES=hackernews,github,zhihu,reddit,v2ex
 ```
 
+要添加新网站，不使用通用爬虫；让你的 coding agent 按 [docs/adding-content-source.md](docs/adding-content-source.md) 新增一个显式 scraper。
+
 ## 成本估算
 
 ### DeepSeek V3
