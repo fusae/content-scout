@@ -46,9 +46,8 @@ Content Scout 是一个自动化内容策划工具，帮助内容创作者：
 ### 1. 克隆项目
 
 ```bash
-git clone <your-repo-url>
-cd x-content-scout
-git checkout codex/public-release
+git clone https://github.com/fusae/content-scout.git
+cd content-scout
 ```
 
 ### 2. 安装依赖
