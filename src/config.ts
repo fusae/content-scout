@@ -1,9 +1,28 @@
 import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import type { SourceName, UserRuntimeConfig } from './types/runtime-config.js';
 
 // 加载环境变量
 dotenv.config();
+
+function parseList(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isSourceEnabled(source: SourceName): boolean {
+  const enabledSources = parseList(process.env.ENABLED_SOURCES || '') as SourceName[];
+  const disabledSources = parseList(process.env.DISABLED_SOURCES || '') as SourceName[];
+
+  if (enabledSources.length > 0) {
+    return enabledSources.includes(source);
+  }
+
+  return !disabledSources.includes(source);
+}
 
 /**
  * 应用配置
@@ -42,6 +61,13 @@ export const config = {
     baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
   },
 
+  // Grok Bridge 配置（可选，用于推文草稿生成）
+  grokBridge: {
+    url: process.env.GROK_BRIDGE_URL || '',
+    token: process.env.GROK_BRIDGE_TOKEN || '',
+    timeoutMs: parseInt(process.env.GROK_BRIDGE_TIMEOUT_MS || '180000', 10),
+  },
+
   // X 账号配置
   xAccount: {
     handle: process.env.X_ACCOUNT_HANDLE || 'example_creator',
@@ -53,6 +79,20 @@ export const config = {
       .split(',')
       .map((subreddit) => subreddit.trim().replace(/^r\//i, ''))
       .filter(Boolean),
+  },
+
+  // 中文平台搜索配置：配置关键词后，抖音/小红书会从热榜模式切到搜索模式
+  chineseSources: {
+    keywords: parseList(process.env.CONTENT_SEARCH_KEYWORDS || ''),
+    douyinKeywords: parseList(process.env.DOUYIN_SEARCH_KEYWORDS || process.env.CONTENT_SEARCH_KEYWORDS || ''),
+    xiaohongshuKeywords: parseList(process.env.XIAOHONGSHU_SEARCH_KEYWORDS || process.env.CONTENT_SEARCH_KEYWORDS || ''),
+    douyinCookie: process.env.DOUYIN_COOKIE || '',
+    douyinTikTokDownloaderApiUrl: process.env.DOUYIN_TIKTOKDOWNLOADER_API_URL || '',
+    douyinTikTokDownloaderToken: process.env.DOUYIN_TIKTOKDOWNLOADER_TOKEN || '',
+    xiaohongshuCookie: process.env.XIAOHONGSHU_COOKIE || '',
+    xiaohongshuAdapter: process.env.XIAOHONGSHU_ADAPTER || 'redbook',
+    xiaohongshuCookieSource: process.env.XIAOHONGSHU_COOKIE_SOURCE || 'chrome',
+    xiaohongshuChromeProfile: process.env.XIAOHONGSHU_CHROME_PROFILE || '',
   },
 
   // 飞书配置
@@ -83,6 +123,74 @@ export const config = {
   // 定时任务配置
   cronSchedule: process.env.CRON_SCHEDULE || '0 9 * * *',
 } as const;
+
+export function createLocalRuntimeConfig(): UserRuntimeConfig {
+  return {
+    userId: process.env.USER_ID || 'local',
+    accountHandle: config.xAccount.handle,
+    profilePath: config.profile.path,
+    sources: {
+      x: {
+        enabled: isSourceEnabled('x'),
+      },
+      hackernews: {
+        enabled: isSourceEnabled('hackernews'),
+      },
+      github: {
+        enabled: isSourceEnabled('github'),
+      },
+      zhihu: {
+        enabled: isSourceEnabled('zhihu'),
+      },
+      producthunt: {
+        enabled: isSourceEnabled('producthunt'),
+      },
+      reddit: {
+        enabled: isSourceEnabled('reddit'),
+        subreddits: config.reddit.subreddits,
+      },
+      v2ex: {
+        enabled: isSourceEnabled('v2ex'),
+      },
+      douyin: {
+        enabled: isSourceEnabled('douyin'),
+        keywords: config.chineseSources.douyinKeywords,
+        cookie: config.chineseSources.douyinCookie,
+        tiktokDownloaderApiUrl: config.chineseSources.douyinTikTokDownloaderApiUrl,
+        tiktokDownloaderToken: config.chineseSources.douyinTikTokDownloaderToken,
+      },
+      xiaohongshu: {
+        enabled: isSourceEnabled('xiaohongshu'),
+        keywords: config.chineseSources.xiaohongshuKeywords,
+        cookie: config.chineseSources.xiaohongshuCookie,
+        adapter: config.chineseSources.xiaohongshuAdapter === 'native' ? 'native' : 'redbook',
+        cookieSource: (
+          config.chineseSources.xiaohongshuCookieSource === 'safari' ||
+          config.chineseSources.xiaohongshuCookieSource === 'firefox'
+        )
+          ? config.chineseSources.xiaohongshuCookieSource
+          : 'chrome',
+        chromeProfile: config.chineseSources.xiaohongshuChromeProfile,
+      },
+    },
+    lark: {
+      appId: config.lark.appId,
+      appSecret: config.lark.appSecret,
+      baseId: config.lark.baseId,
+      defaultReceiverId: config.lark.defaultReceiverId,
+    },
+    schedule: {
+      cronSchedule: config.cronSchedule,
+      timezone: process.env.TZ || 'Asia/Shanghai',
+    },
+    rateLimit: {
+      maxConcurrent: config.rateLimit.maxConcurrent,
+      requestDelayMs: config.rateLimit.requestDelayMs,
+    },
+  };
+}
+
+export const localRuntimeConfig = createLocalRuntimeConfig();
 
 /**
  * 验证必需的配置项

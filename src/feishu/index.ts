@@ -1,4 +1,4 @@
-import { LarkClient } from './client.js';
+import { LarkClient, LarkClientOptions } from './client.js';
 import { CardBuilder } from './cards.js';
 import { CardActionHandler } from './handler.js';
 import { DatabaseManager } from '../db/index.js';
@@ -17,8 +17,8 @@ export class FeishuClient {
   private actionHandler: CardActionHandler;
   private defaultReceiverId?: string;
 
-  constructor(private db: DatabaseManager) {
-    this.larkClient = new LarkClient();
+  constructor(private db: DatabaseManager, larkOptions: LarkClientOptions = {}) {
+    this.larkClient = new LarkClient(larkOptions);
     this.actionHandler = new CardActionHandler(this.larkClient, db);
     logger.info('FeishuClient initialized');
   }
@@ -26,12 +26,19 @@ export class FeishuClient {
   /**
    * 初始化客户端
    */
-  async initialize(defaultReceiverId?: string): Promise<void> {
+  async initialize(
+    defaultReceiverId?: string,
+    options: { listenForActions?: boolean } = {}
+  ): Promise<void> {
     this.defaultReceiverId = defaultReceiverId;
 
     // 获取机器人信息
     const botInfo = await this.larkClient.getBotInfo();
     logger.info(`Feishu bot ready: ${botInfo.bot_name}`);
+
+    if (options.listenForActions === false) {
+      return;
+    }
 
     await this.larkClient.startCardActionListener(async (data) => {
       const callback = this.normalizeCardAction(data);

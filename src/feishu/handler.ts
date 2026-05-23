@@ -78,12 +78,14 @@ export class CardActionHandler {
       throw new Error(`Draft ${draft_index} not found`);
     }
 
-    // 4. 获取原文链接
+    // 4. 获取原文内容，确认记录仍存在
     const content = this.db.getContentById(content_id);
-    const actualUrl = content?.url || '';
+    if (!content) {
+      throw new Error(`Content ${content_id} not found`);
+    }
 
-    // 5. 替换链接占位符
-    const finalDraft = selectedDraft.content.replace('[链接]', actualUrl);
+    // 5. 草稿正文不附带链接，避免影响 X 分发
+    const finalDraft = selectedDraft.content;
 
     // 6. 发送确认消息（包含可复制的草稿）
     await this.larkClient.sendText(

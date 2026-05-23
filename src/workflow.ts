@@ -18,7 +18,8 @@ import { DraftGenerator } from './generator/index.js';
 import { FeishuClient } from './feishu/index.js';
 import { EmbeddingClient } from './ai/embedding.js';
 import { DeepSeekClient } from './ai/deepseek.js';
-import { config, ensureDirectories, validateConfig } from './config.js';
+import { GrokBridgeClient } from './ai/grok-bridge.js';
+import { config, ensureDirectories, localRuntimeConfig, validateConfig } from './config.js';
 import { logger } from './utils/logger.js';
 
 /**
@@ -26,7 +27,7 @@ import { logger } from './utils/logger.js';
  */
 async function runCompleteWorkflow() {
   logger.info('=== X Content Scout - Complete Workflow ===');
-  logger.info(`Account: @${config.xAccount.handle}`);
+  logger.info(`Account: @${localRuntimeConfig.accountHandle}`);
   logger.info(`Time: ${new Date().toISOString()}`);
 
   // 验证配置
@@ -49,19 +50,29 @@ async function runCompleteWorkflow() {
     config.embedding.model
   );
   const deepseekClient = new DeepSeekClient(config.deepseek.apiKey, config.deepseek.baseURL);
-  const aggregator = new ContentAggregator(db);
+  const aggregator = new ContentAggregator(db, localRuntimeConfig);
   const profileManager = new ProfileManager(
     db,
     config.embedding.apiKey,
-    config.xAccount.handle,
+    localRuntimeConfig.accountHandle,
     config.deepseek.apiKey,
     config.deepseek.baseURL,
     config.embedding.baseURL,
     config.embedding.model,
-    config.profile.path
+    localRuntimeConfig.profilePath
   );
   const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
-  const draftGenerator = new DraftGenerator(deepseekClient);
+  const draftClient = config.grokBridge.url
+    ? new GrokBridgeClient(
+      config.grokBridge.url,
+      config.grokBridge.token,
+      config.grokBridge.timeoutMs
+    )
+    : deepseekClient;
+  const draftGenerator = new DraftGenerator(
+    draftClient,
+    config.grokBridge.url ? 'grok-bridge' : 'deepseek-chat'
+  );
   const feishuClient = new FeishuClient(db);
 
   try {
@@ -118,14 +129,36 @@ async function runCompleteWorkflow() {
     const draftResults = await draftGenerator.generateBatch(filterResult.contents, profile);
 
     logger.info(`Generated drafts for ${draftResults.length} contents`);
-    draftResults.forEach((result, index) => {
-      logger.info(`  Content #${index + 1}: ${result.drafts.length} drafts`);
+    draftResults.forEach((result) => {
+      logger.info(`  Content #${result.contentId}: ${result.drafts.length} drafts`);
     });
+
+    const contentById = new Map(
+      filterResult.contents.map((content) => [content.contentId, content])
+    );
+    const recommendations = draftResults
+      .map((result) => {
+        const content = contentById.get(result.contentId);
+        if (!content || result.drafts.length === 0) {
+          return null;
+        }
+
+        return {
+          content,
+          drafts: result.drafts,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    if (recommendations.length === 0) {
+      logger.warn('No drafts generated successfully, skipping Feishu push');
+      return;
+    }
 
     // Phase 6: 飞书推送
     logger.info('\n=== Phase 6: Feishu Push ===');
 
-    const defaultReceiverId = config.lark.defaultReceiverId;
+    const defaultReceiverId = localRuntimeConfig.lark.defaultReceiverId;
     if (!defaultReceiverId) {
       logger.warn('FEISHU_DEFAULT_RECEIVER_ID not set, skipping push');
       logger.info('Drafts generated successfully but not pushed to Feishu');
@@ -133,10 +166,9 @@ async function runCompleteWorkflow() {
 
       // 打印草稿预览
       logger.info('\n=== Draft Preview ===');
-      draftResults.forEach((result, index) => {
-        const content = filterResult.contents[index];
+      recommendations.forEach(({ content, drafts }, index) => {
         logger.info(`\nContent #${index + 1}: ${content.content.title}`);
-        result.drafts.forEach((draft, draftIndex) => {
+        drafts.forEach((draft, draftIndex) => {
           logger.info(`  Draft ${draftIndex + 1} (${draft.style}):`);
           logger.info(`    ${draft.content}`);
           logger.info(`    Reasoning: ${draft.reasoning}`);
@@ -144,12 +176,6 @@ async function runCompleteWorkflow() {
       });
     } else {
       await feishuClient.initialize(defaultReceiverId);
-
-      // 准备推荐数据
-      const recommendations = filterResult.contents.map((content, index) => ({
-        content,
-        drafts: draftResults[index]?.drafts || [],
-      }));
 
       // 推送
       const pushResults = await feishuClient.pushRecommendations(recommendations);

@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Content Scout - 管理后台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center">
+          <h1 class="text-xl font-bold text-gray-900">Content Scout</h1>
+          <span class="ml-3 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">管理后台</span>
+        </div>
+        <div class="flex items-center space-x-4">
+          <div id="statusIndicator" class="flex items-center">
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span class="ml-2 text-sm text-gray-600">运行中</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+      <!-- Sidebar - User List -->
+      <div class="lg:col-span-1">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div class="p-4 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">用户列表</h2>
+          </div>
+          <div class="p-4">
+            <div class="mb-4">
+              <input
+                id="userId"
+                type="text"
+                placeholder="输入用户 ID"
+                value="local"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+              <button
+                onclick="loadUser()"
+                class="mt-2 w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+              >
+                加载/新建用户
+              </button>
+            </div>
+            <div id="users" class="space-y-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Panel -->
+      <div class="lg:col-span-3">
+        <!-- Tabs -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div class="border-b border-gray-200">
+            <nav class="flex -mb-px">
+              <button onclick="switchTab('overview')" id="tab-overview" class="tab-button active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
+                概览
+              </button>
+              <button onclick="switchTab('config')" id="tab-config" class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                配置
+              </button>
+              <button onclick="switchTab('platforms')" id="tab-platforms" class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                平台连接
+              </button>
+              <button onclick="switchTab('logs')" id="tab-logs" class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                运行日志
+              </button>
+            </nav>
+          </div>
+
+          <!-- Tab Content -->
+          <div class="p-6">
+
+            <!-- Overview Tab -->
+            <div id="content-overview" class="tab-content">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-blue-50 rounded-lg p-4">
+                  <div class="text-sm text-blue-600 font-medium">已启用平台</div>
+                  <div id="enabledSourcesCount" class="text-2xl font-bold text-blue-900 mt-1">0</div>
+                </div>
+                <div class="bg-green-50 rounded-lg p-4">
+                  <div class="text-sm text-green-600 font-medium">定时任务</div>
+                  <div id="scheduleStatus" class="text-2xl font-bold text-green-900 mt-1">未设置</div>
+                </div>
+                <div class="bg-purple-50 rounded-lg p-4">
+                  <div class="text-sm text-purple-600 font-medium">平台连接</div>
+                  <div id="connectionCount" class="text-2xl font-bold text-purple-900 mt-1">0/2</div>
+                </div>
+              </div>
+
+              <div class="flex space-x-3 mb-6">
+                <button onclick="runUser()" class="flex-1 bg-blue-600 text-white px-4 py-3 rounded-md hover:bg-blue-700 transition font-medium">
+                  立即运行
+                </button>
+                <button onclick="testPush()" class="flex-1 bg-green-600 text-white px-4 py-3 rounded-md hover:bg-green-700 transition font-medium">
+                  测试飞书推送
+                </button>
+              </div>
+
+              <div id="statusBox" class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div class="text-sm font-medium text-gray-700 mb-2">状态信息</div>
+                <pre id="status" class="text-xs text-gray-600 whitespace-pre-wrap font-mono"></pre>
+              </div>
+            </div>
+
+            <!-- Config Tab -->
+            <div id="content-config" class="tab-content hidden">
+              <div class="mb-4">
+                <button onclick="saveUser()" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition font-medium">
+                  保存配置
+                </button>
+                <span class="ml-3 text-sm text-gray-500">修改后记得保存</span>
+              </div>
+              <textarea
+                id="config"
+                class="w-full h-96 px-4 py-3 border border-gray-300 rounded-md font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="配置将在这里显示..."
+              ></textarea>
+              <div class="mt-2 text-sm text-gray-500">
+                提示：直接编辑 JSON 配置，保存后生效
+              </div>
+            </div>
+
+            <!-- Platforms Tab -->
+            <div id="content-platforms" class="tab-content hidden">
+              <div class="space-y-6">
+                <!-- Douyin -->
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center">
+                      <div class="w-10 h-10 bg-black rounded-lg flex items-center justify-center text-white font-bold">抖</div>
+                      <div class="ml-3">
+                        <h3 class="font-semibold text-gray-900">抖音</h3>
+                        <p class="text-sm text-gray-500">通过 Cookie 连接</p>
+                      </div>
+                    </div>
+                    <span id="douyinStatus" class="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">未连接</span>
+                  </div>
+                  <div class="flex space-x-2">
+                    <input
+                      id="douyinCookie"
+                      type="text"
+                      placeholder="粘贴抖音 Cookie"
+                      class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                    <button onclick="saveCookie('douyin')" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
+                      连接
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Xiaohongshu -->
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center">
+                      <div class="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center text-white font-bold">小</div>
+                      <div class="ml-3">
+                        <h3 class="font-semibold text-gray-900">小红书</h3>
+                        <p class="text-sm text-gray-500">通过 Cookie 连接</p>
+                      </div>
+                    </div>
+                    <span id="xhsStatus" class="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">未连接</span>
+                  </div>
+                  <div class="flex space-x-2">
+                    <input
+                      id="xhsCookie"
+                      type="text"
+                      placeholder="粘贴小红书 Cookie"
+                      class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                    <button onclick="saveCookie('xiaohongshu')" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
+                      连接
+                    </button>
+                  </div>
+                </div>
+
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div class="flex">
+                    <div class="flex-shrink-0">
+                      <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                      </svg>
+                    </div>
+                    <div class="ml-3">
+                      <h3 class="text-sm font-medium text-blue-800">如何获取 Cookie？</h3>
+                      <div class="mt-2 text-sm text-blue-700">
+                        <ol class="list-decimal list-inside space-y-1">
+                          <li>在浏览器中登录对应平台</li>
+                          <li>打开开发者工具（F12）</li>
+                          <li>切换到 Network 标签</li>
+                          <li>刷新页面，找到请求头中的 Cookie</li>
+                          <li>复制完整的 Cookie 值粘贴到上方输入框</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Logs Tab -->
+            <div id="content-logs" class="tab-content hidden">
+              <div class="mb-4">
+                <button onclick="loadLogs()" class="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition">
+                  刷新日志
+                </button>
+              </div>
+              <div id="logsContainer" class="bg-gray-50 rounded-lg p-4 border border-gray-200 max-h-96 overflow-y-auto">
+                <pre id="logs" class="text-xs text-gray-600 whitespace-pre-wrap font-mono">加载中...</pre>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-4 right-4 hidden">
+    <div class="bg-white rounded-lg shadow-lg border border-gray-200 p-4 max-w-sm">
+      <div class="flex items-center">
+        <div id="toastIcon" class="flex-shrink-0"></div>
+        <div class="ml-3">
+          <p id="toastMessage" class="text-sm font-medium text-gray-900"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUserId = 'local';
+    let currentConfig = null;
+
+    // Toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const icon = document.getElementById('toastIcon');
+      const msg = document.getElementById('toastMessage');
+
+      msg.textContent = message;
+
+      if (type === 'success') {
+        icon.innerHTML = '<svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
+      } else {
+        icon.innerHTML = '<svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>';
+      }
+
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 3000);
+    }
+
+    // Tab switching
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active', 'border-blue-600', 'text-blue-600');
+        btn.classList.add('border-transparent', 'text-gray-500');
+      });
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('hidden');
+      });
+
+      document.getElementById(`tab-${tabName}`).classList.add('active', 'border-blue-600', 'text-blue-600');
+      document.getElementById(`content-${tabName}`).classList.remove('hidden');
+
+      if (tabName === 'logs') {
+        loadLogs();
+      }
+    }
+
+    // API request helper
+    async function request(path, options = {}) {
+      try {
+        const response = await fetch(path, {
+          headers: {'content-type': 'application/json'},
+          ...options
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || response.statusText);
+        return data;
+      } catch (error) {
+        showToast(error.message, 'error');
+        throw error;
+      }
+    }
+
+    // Load users
+    async function loadUsers() {
+      try {
+        const users = await request('/api/users');
+        const container = document.getElementById('users');
+        container.innerHTML = users.map(u => `
+          <button
+            onclick="selectUser('${u.userId}')"
+            class="w-full text-left px-3 py-2 rounded-md hover:bg-gray-50 border border-gray-200 transition"
+          >
+            <div class="font-medium text-gray-900">${u.userId}</div>
+            <div class="text-xs text-gray-500 mt-1">${u.enabledSources.join(', ') || '未配置'}</div>
+          </button>
+        `).join('');
+      } catch (error) {
+        console.error('Failed to load users:', error);
+      }
+    }
+
+    function selectUser(id) {
+      document.getElementById('userId').value = id;
+      loadUser();
+    }
+
+    // Load user config
+    async function loadUser() {
+      try {
+        const id = document.getElementById('userId').value || 'local';
+        currentUserId = id;
+        const data = await request(`/api/users/${encodeURIComponent(id)}`);
+        currentConfig = data;
+
+        document.getElementById('config').value = JSON.stringify(data, null, 2);
+        updateOverview(data);
+        updatePlatformStatus(data);
+        showToast('配置加载成功');
+      } catch (error) {
+        console.error('Failed to load user:', error);
+      }
+    }
+
+    // Update overview
+    function updateOverview(config) {
+      const enabledSources = Object.keys(config.sources).filter(key => config.sources[key].enabled);
+      document.getElementById('enabledSourcesCount').textContent = enabledSources.length;
+      document.getElementById('scheduleStatus').textContent = config.schedule?.cronSchedule || '未设置';
+
+      const connections = [config.sources.douyin?.cookie, config.sources.xiaohongshu?.cookie].filter(Boolean).length;
+      document.getElementById('connectionCount').textContent = `${connections}/2`;
+    }
+
+    // Update platform status
+    function updatePlatformStatus(config) {
+      const douyinConnected = Boolean(config.sources.douyin?.cookie);
+      const xhsConnected = Boolean(config.sources.xiaohongshu?.cookie);
+
+      const douyinStatus = document.getElementById('douyinStatus');
+      const xhsStatus = document.getElementById('xhsStatus');
+
+      if (douyinConnected) {
+        douyinStatus.textContent = '已连接';
+        douyinStatus.className = 'px-3 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full';
+      } else {
+        douyinStatus.textContent = '未连接';
+        douyinStatus.className = 'px-3 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full';
+      }
+
+      if (xhsConnected) {
+        xhsStatus.textContent = '已连接';
+        xhsStatus.className = 'px-3 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full';
+      } else {
+        xhsStatus.textContent = '未连接';
+        xhsStatus.className = 'px-3 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full';
+      }
+    }
+
+    // Save user config
+    async function saveUser() {
+      try {
+        const id = currentUserId;
+        const payload = JSON.parse(document.getElementById('config').value);
+        const data = await request(`/api/users/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        });
+        currentConfig = data;
+        document.getElementById('config').value = JSON.stringify(data, null, 2);
+        await loadUsers();
+        updateOverview(data);
+        showToast('配置保存成功');
+      } catch (error) {
+        console.error('Failed to save user:', error);
+      }
+    }
+
+    // Save cookie
+    async function saveCookie(platform) {
+      try {
+        const id = currentUserId;
+        const input = platform === 'douyin' ? 'douyinCookie' : 'xhsCookie';
+        const value = document.getElementById(input).value;
+
+        if (!value) {
+          showToast('请输入 Cookie', 'error');
+          return;
+        }
+
+        const data = await request(`/api/users/${encodeURIComponent(id)}/credentials/${platform}`, {
+          method: 'POST',
+          body: JSON.stringify({value})
+        });
+
+        currentConfig = data;
+        document.getElementById('config').value = JSON.stringify(data, null, 2);
+        document.getElementById(input).value = '';
+        await loadUsers();
+        updatePlatformStatus(data);
+        showToast(`${platform === 'douyin' ? '抖音' : '小红书'}连接成功`);
+      } catch (error) {
+        console.error('Failed to save cookie:', error);
+      }
+    }
+
+    // Run user
+    async function runUser() {
+      try {
+        const id = currentUserId;
+        document.getElementById('status').textContent = '正在运行...';
+        const result = await request(`/api/users/${encodeURIComponent(id)}/run`, {method: 'POST'});
+        document.getElementById('status').textContent = JSON.stringify(result, null, 2);
+        showToast('任务已提交');
+      } catch (error) {
+        console.error('Failed to run user:', error);
+      }
+    }
+
+    // Test push
+    async function testPush() {
+      try {
+        const id = currentUserId;
+        document.getElementById('status').textContent = '正在测试...';
+        const result = await request(`/api/users/${encodeURIComponent(id)}/test-push`, {method: 'POST'});
+        document.getElementById('status').textContent = JSON.stringify(result, null, 2);
+        showToast('测试推送已发送');
+      } catch (error) {
+        console.error('Failed to test push:', error);
+      }
+    }
+
+    // Load logs
+    async function loadLogs() {
+      try {
+        const runs = await request(`/api/runs?userId=${encodeURIComponent(currentUserId)}&limit=20`);
+        document.getElementById('logs').textContent = JSON.stringify(runs, null, 2);
+      } catch (error) {
+        console.error('Failed to load logs:', error);
+      }
+    }
+
+    // Initialize
+    loadUsers();
+    loadUser();
+  </script>
+</body>
+</html>

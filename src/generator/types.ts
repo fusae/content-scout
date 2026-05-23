@@ -3,16 +3,16 @@
  */
 
 /**
- * 草稿风格
+ * 草稿长度版本
  */
-export type DraftStyle = 'opinion' | 'share' | 'question';
+export type DraftStyle = 'short' | 'medium' | 'long';
 
 /**
  * 单个草稿
  */
 export interface Draft {
   content: string; // 草稿内容
-  style: DraftStyle; // 风格类型
+  style: DraftStyle; // 长度版本
   reasoning: string; // 生成理由
   length: number; // 字符数
 }

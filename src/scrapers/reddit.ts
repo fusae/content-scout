@@ -2,6 +2,8 @@ import { BaseScraper } from './base.js';
 import { ContentItem } from '../types/content.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
+import type { RateLimiter } from '../utils/rate-limiter.js';
+import type { RedditSourceRuntimeConfig } from '../types/runtime-config.js';
 
 interface RedditRssEntry {
   title: string;
@@ -18,7 +20,12 @@ interface RedditRssEntry {
 export class RedditScraper extends BaseScraper {
   protected source = 'reddit';
   protected baseUrl = 'https://www.reddit.com';
-  private subreddits = config.reddit.subreddits;
+  private subreddits: string[];
+
+  constructor(rateLimiter: RateLimiter, sourceConfig?: RedditSourceRuntimeConfig) {
+    super(rateLimiter);
+    this.subreddits = sourceConfig?.subreddits || config.reddit.subreddits;
+  }
 
   async scrape(): Promise<ContentItem[]> {
     try {

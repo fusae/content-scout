@@ -12,6 +12,8 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "db:init": "tsx src/db/init.ts",
+    "admin": "tsx src/web/admin-server.ts",
+    "worker": "tsx src/runtime/worker.ts",
     "test:aggregator": "tsx src/test-aggregator.ts",
     "test:filter": "tsx src/test-filter.ts",
     "test:generator": "tsx src/test-generator-feishu.ts",
@@ -27,6 +29,7 @@
   "license": "MIT",
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.29.0",
+    "@lucasygu/redbook": "^0.7.2",
     "puppeteer": "^22.0.0",
     "better-sqlite3": "^9.4.0",
     "openai": "^4.28.0",
@@ -37,8 +40,8 @@
     "axios": "^1.6.7"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
     "@types/better-sqlite3": "^7.6.9",
+    "@types/node": "^20.11.0",
     "@types/node-cron": "^3.0.11",
     "typescript": "^5.3.3",
     "tsx": "^4.7.0",

@@ -1,0 +1,461 @@
+import { BaseScraper } from './base.js';
+import { ContentItem } from '../types/content.js';
+import { logger } from '../utils/logger.js';
+import { retry, retryStrategies } from '../utils/retry.js';
+import { config } from '../config.js';
+import type { RateLimiter } from '../utils/rate-limiter.js';
+import type { XiaohongshuSourceRuntimeConfig } from '../types/runtime-config.js';
+
+type CookieSource = 'chrome' | 'safari' | 'firefox';
+type RedbookClient = {
+  searchNotes(
+    keyword: string,
+    page?: number,
+    pageSize?: number,
+    sort?: 'general' | 'popularity_descending' | 'time_descending',
+    noteType?: 0 | 1 | 2
+  ): Promise<unknown>;
+};
+
+interface XiaohongshuNote {
+  id: string;
+  title: string;
+  url: string;
+  author?: string;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+}
+
+interface XiaohongshuSearchResponse {
+  code?: number;
+  success?: boolean;
+  msg?: string;
+  data?: {
+    items?: XiaohongshuSearchItem[];
+  };
+}
+
+interface XiaohongshuSearchItem {
+  id?: string;
+  xsec_token?: string;
+  note_card?: {
+    note_id?: string;
+    display_title?: string;
+    desc?: string;
+    title?: string;
+    user?: {
+      nickname?: string;
+    };
+    interact_info?: {
+      liked_count?: string | number;
+      comment_count?: string | number;
+      share_count?: string | number;
+    };
+  };
+}
+
+/**
+ * 小红书爬虫
+ * 默认抓 Explore；配置关键词后改用搜索结果
+ */
+export class XiaohongshuScraper extends BaseScraper {
+  protected source = 'xiaohongshu';
+  protected baseUrl = 'https://www.xiaohongshu.com';
+  private sourceConfig: XiaohongshuSourceRuntimeConfig;
+  private keywords: string[];
+
+  constructor(rateLimiter: RateLimiter, sourceConfig?: XiaohongshuSourceRuntimeConfig) {
+    super(rateLimiter);
+    this.sourceConfig = sourceConfig || {
+      enabled: true,
+      keywords: config.chineseSources.xiaohongshuKeywords,
+      cookie: config.chineseSources.xiaohongshuCookie,
+      adapter: config.chineseSources.xiaohongshuAdapter === 'native' ? 'native' : 'redbook',
+      cookieSource: this.getCookieSource(config.chineseSources.xiaohongshuCookieSource),
+      chromeProfile: config.chineseSources.xiaohongshuChromeProfile,
+    };
+    this.keywords = this.sourceConfig.keywords;
+  }
+
+  async scrape(): Promise<ContentItem[]> {
+    try {
+      logger.info('Starting Xiaohongshu scrape...');
+
+      if (this.keywords.length > 0) {
+        return await this.scrapeKeywords();
+      }
+
+      const html = await this.fetchWithRetry<string>(`${this.baseUrl}/explore`);
+      const notes = this.parseNotes(html);
+
+      const items = notes
+        .map((note) => this.convertToContentItem(note))
+        .filter((item) => this.validateItem(item));
+
+      const dedupedItems = this.deduplicateByUrl(items);
+      logger.info(`Xiaohongshu scrape completed: ${dedupedItems.length} items collected`);
+
+      return dedupedItems;
+    } catch (error) {
+      logger.error('Xiaohongshu scrape failed:', error as Error);
+      return [];
+    }
+  }
+
+  private async scrapeKeywords(): Promise<ContentItem[]> {
+    const allItems: ContentItem[] = [];
+    const redbookClient = await this.createRedbookClient();
+
+    for (const keyword of this.keywords) {
+      try {
+        await this.rateLimiter.execute(async () => {
+          const notes = redbookClient
+            ? await this.searchByRedbook(redbookClient, keyword)
+            : await this.searchByKeyword(keyword);
+          const items = notes
+            .map((note) => this.convertToContentItem(note, keyword))
+            .filter((item) => this.validateItem(item));
+          allItems.push(...items);
+        });
+        await this.randomDelay(800, 1500);
+      } catch (error) {
+        logger.error(`Failed to search Xiaohongshu keyword "${keyword}":`, error as Error);
+      }
+    }
+
+    const dedupedItems = this.deduplicateByUrl(allItems);
+    logger.info(`Xiaohongshu keyword scrape completed: ${dedupedItems.length} items collected`);
+    return dedupedItems;
+  }
+
+  private async createRedbookClient(): Promise<RedbookClient | null> {
+    if (this.sourceConfig.adapter !== 'redbook') {
+      return null;
+    }
+
+    try {
+      const { XhsClient } = await import('@lucasygu/redbook');
+      const { extractCookies, parseCookieString } = await import('@lucasygu/redbook/cookies');
+      const cookies = this.sourceConfig.cookie
+        ? parseCookieString(this.sourceConfig.cookie)
+        : await extractCookies(
+          this.sourceConfig.cookieSource,
+          this.sourceConfig.chromeProfile || undefined
+        );
+
+      return new XhsClient(cookies);
+    } catch (error) {
+      logger.warn(`Redbook adapter unavailable: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  private async searchByRedbook(client: RedbookClient, keyword: string): Promise<XiaohongshuNote[]> {
+    try {
+      const response = await client.searchNotes(keyword, 1, 20, 'popularity_descending', 0);
+      return this.parseSearchItems(response);
+    } catch (error) {
+      logger.warn(`Redbook Xiaohongshu search failed for "${keyword}": ${(error as Error).message}`);
+      return this.searchByKeyword(keyword);
+    }
+  }
+
+  private async searchByKeyword(keyword: string): Promise<XiaohongshuNote[]> {
+    const html = await this.fetchSearchPage(keyword);
+    const pageNotes = [
+      ...this.parseNotes(html),
+      ...this.parseInitialStateNotes(html),
+    ];
+    if (pageNotes.length > 0) {
+      return pageNotes;
+    }
+
+    const response = await this.fetchSearchApi(keyword);
+    if (response.success === false || response.code === -101) {
+      logger.warn(`Xiaohongshu keyword search requires login cookie/signature: ${keyword}`);
+      return [];
+    }
+
+    return (response.data?.items || [])
+      .map((item) => this.convertSearchItem(item))
+      .filter((item): item is XiaohongshuNote => Boolean(item));
+  }
+
+  private async fetchSearchPage(keyword: string): Promise<string> {
+    const url = `${this.baseUrl}/search_result?keyword=${encodeURIComponent(keyword)}&source=web_search_result_notes`;
+
+    return retry(
+      async () => {
+        logger.debug(`Fetching: ${url}`);
+        const response = await this.axiosInstance.get<string>(url, {
+          headers: this.buildHtmlHeaders(`${this.baseUrl}/explore`),
+        });
+        return response.data;
+      },
+      {
+        maxAttempts: 2,
+        initialDelay: 1000,
+        shouldRetry: (error: Error) => (
+          retryStrategies.networkError(error) ||
+          retryStrategies.serverError(error) ||
+          retryStrategies.rateLimitError(error)
+        ),
+      }
+    );
+  }
+
+  private async fetchSearchApi(keyword: string): Promise<XiaohongshuSearchResponse> {
+    const url = 'https://edith.xiaohongshu.com/api/sns/web/v1/search/notes';
+
+    return retry(
+      async () => {
+        logger.debug(`Fetching: ${url}`);
+        const response = await this.axiosInstance.post<XiaohongshuSearchResponse>(
+          url,
+          {
+            keyword,
+            page: 1,
+            page_size: 20,
+            search_id: '',
+            sort: 'popularity_descending',
+            note_type: 0,
+            ext_flags: [],
+            filters: [],
+            geo: '',
+          },
+          {
+            headers: this.buildJsonHeaders(`${this.baseUrl}/search_result?keyword=${encodeURIComponent(keyword)}`),
+          }
+        );
+        return response.data;
+      },
+      {
+        maxAttempts: 2,
+        initialDelay: 1000,
+        shouldRetry: (error: Error) => (
+          retryStrategies.networkError(error) ||
+          retryStrategies.serverError(error) ||
+          retryStrategies.rateLimitError(error)
+        ),
+      }
+    );
+  }
+
+  private parseNotes(html: string): XiaohongshuNote[] {
+    const notes: XiaohongshuNote[] = [];
+    const sections = html.match(/<section class="note-item"[\s\S]*?<\/section>/g) || [];
+
+    for (const section of sections) {
+      const id = section.match(/href="\/explore\/([^"?]+)(?:\?[^"]*)?"/)?.[1];
+      const titleHtml = section.match(/class="title"[\s\S]*?<span[^>]*>([\s\S]*?)<\/span>/)?.[1] ||
+        section.match(/class="title"[\s\S]*?>([\s\S]*?)<\/a>/)?.[1] ||
+        '';
+      const authorHtml = section.match(/class="name"[^>]*>([\s\S]*?)<\/span>/)?.[1] || '';
+      const likesText = section.match(/class="count"[^>]*>([\s\S]*?)<\/span>/)?.[1] || '';
+
+      const title = this.cleanText(titleHtml);
+      if (!id || !title) {
+        continue;
+      }
+
+      notes.push({
+        id,
+        title,
+        url: `${this.baseUrl}/explore/${id}`,
+        author: this.cleanText(authorHtml),
+        likes: this.parseCount(this.cleanText(likesText)),
+      });
+    }
+
+    return notes;
+  }
+
+  private parseInitialStateNotes(html: string): XiaohongshuNote[] {
+    const stateText = html.match(/window\.__INITIAL_STATE__=([\s\S]*?)<\/script>/)?.[1];
+    if (!stateText) {
+      return [];
+    }
+
+    try {
+      const normalizedState = stateText
+        .replace(/:undefined/g, ':null')
+        .replace(/,undefined/g, ',null')
+        .replace(/\[undefined/g, '[null');
+      const state = JSON.parse(normalizedState) as unknown;
+      const search = this.asRecord(this.asRecord(state)?.search);
+      const feeds = search?.feeds;
+      if (!Array.isArray(feeds)) {
+        return [];
+      }
+
+      return feeds
+        .map((feed) => this.convertStateFeed(feed))
+        .filter((feed): feed is XiaohongshuNote => Boolean(feed));
+    } catch {
+      return [];
+    }
+  }
+
+  private convertToContentItem(note: XiaohongshuNote, keyword?: string): ContentItem {
+    return {
+      source: 'xiaohongshu',
+      title: keyword ? `[小红书搜索:${keyword}] ${note.title}` : note.title,
+      content: note.title,
+      url: note.url,
+      author: note.author,
+      publishedAt: new Date(),
+      metrics: {
+        likes: note.likes,
+        comments: note.comments,
+        shares: note.shares,
+      },
+      collectedAt: new Date(),
+    };
+  }
+
+  private convertSearchItem(item: XiaohongshuSearchItem): XiaohongshuNote | null {
+    const card = item.note_card;
+    const id = card?.note_id || item.id;
+    const title = this.cleanText(card?.display_title || card?.title || card?.desc || '');
+    if (!id || !title) {
+      return null;
+    }
+
+    const xsecToken = item.xsec_token ? `?xsec_token=${encodeURIComponent(item.xsec_token)}&xsec_source=pc_search` : '';
+
+    return {
+      id,
+      title,
+      url: `${this.baseUrl}/explore/${id}${xsecToken}`,
+      author: card?.user?.nickname,
+      likes: this.parseCount(card?.interact_info?.liked_count),
+      comments: this.parseCount(card?.interact_info?.comment_count),
+      shares: this.parseCount(card?.interact_info?.share_count),
+    };
+  }
+
+  private parseSearchItems(response: unknown): XiaohongshuNote[] {
+    const result = this.asRecord(response);
+    const items = result?.items;
+    if (!Array.isArray(items)) {
+      return [];
+    }
+
+    return items
+      .map((item) => this.convertSearchItem(item as XiaohongshuSearchItem))
+      .filter((item): item is XiaohongshuNote => Boolean(item));
+  }
+
+  private convertStateFeed(feed: unknown): XiaohongshuNote | null {
+    const item = this.asRecord(feed);
+    const card = this.asRecord(item?.note_card || item?.noteCard || item);
+    const id = this.stringValue(card?.note_id) || this.stringValue(item?.id);
+    const title = this.cleanText(
+      this.stringValue(card?.display_title) ||
+      this.stringValue(card?.title) ||
+      this.stringValue(card?.desc)
+    );
+    if (!id || !title) {
+      return null;
+    }
+
+    const user = this.asRecord(card?.user);
+    const interactInfo = this.asRecord(card?.interact_info || card?.interactInfo);
+    const xsecToken = this.stringValue(item?.xsec_token);
+    const xsecQuery = xsecToken ? `?xsec_token=${encodeURIComponent(xsecToken)}&xsec_source=pc_search` : '';
+
+    return {
+      id,
+      title,
+      url: `${this.baseUrl}/explore/${id}${xsecQuery}`,
+      author: this.stringValue(user?.nickname),
+      likes: this.parseCount(this.stringValue(interactInfo?.liked_count)),
+      comments: this.parseCount(this.stringValue(interactInfo?.comment_count)),
+      shares: this.parseCount(this.stringValue(interactInfo?.share_count)),
+    };
+  }
+
+  private getCookieSource(source: string): CookieSource {
+    if (source === 'safari' || source === 'firefox') {
+      return source;
+    }
+
+    return 'chrome';
+  }
+
+  private buildJsonHeaders(referer: string): Record<string, string> {
+    const headers: Record<string, string> = {
+      'User-Agent': this.getRandomUserAgent(),
+      'Accept': 'application/json,text/plain,*/*',
+      'Content-Type': 'application/json',
+      'Origin': this.baseUrl,
+      'Referer': referer,
+    };
+
+    if (this.sourceConfig.cookie) {
+      headers.Cookie = this.sourceConfig.cookie;
+    }
+
+    return headers;
+  }
+
+  private buildHtmlHeaders(referer: string): Record<string, string> {
+    const headers: Record<string, string> = {
+      'User-Agent': this.getRandomUserAgent(),
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Referer': referer,
+    };
+
+    if (this.sourceConfig.cookie) {
+      headers.Cookie = this.sourceConfig.cookie;
+    }
+
+    return headers;
+  }
+
+  private cleanText(text: string): string {
+    return this.cleanContent(this.stripHtml(this.decodeHtml(text)));
+  }
+
+  private decodeHtml(text: string): string {
+    return text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#x27;/g, "'")
+      .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
+  }
+
+  private parseCount(value: string | number | undefined): number | undefined {
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if (!value) {
+      return undefined;
+    }
+
+    const normalized = value.trim();
+    const count = parseFloat(normalized.replace(/[^\d.]/g, ''));
+    if (Number.isNaN(count)) {
+      return undefined;
+    }
+
+    if (normalized.includes('万')) {
+      return Math.round(count * 10000);
+    }
+
+    return Math.round(count);
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+  }
+
+  private stringValue(value: unknown): string {
+    return typeof value === 'string' ? value : '';
+  }
+}

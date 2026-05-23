@@ -53,6 +53,68 @@ export interface FeedbackLog {
   created_at?: string;
 }
 
+export interface RuntimeUserRecord {
+  user_id: string;
+  account_handle: string;
+  profile_path?: string;
+  cron_schedule: string;
+  timezone: string;
+  rate_limit_max_concurrent: number;
+  rate_limit_request_delay_ms: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RuntimeLarkConfigRecord {
+  user_id: string;
+  app_id?: string;
+  app_secret_encrypted?: string;
+  base_id?: string;
+  default_receiver_id?: string;
+  updated_at?: string;
+}
+
+export interface RuntimeSourceConfigRecord {
+  user_id: string;
+  source: string;
+  enabled: number;
+  config_json?: string;
+  updated_at?: string;
+}
+
+export interface RuntimeCredentialRecord {
+  user_id: string;
+  credential_key: string;
+  encrypted_value: string;
+  updated_at?: string;
+}
+
+export interface RuntimeJobRecord {
+  id?: number;
+  user_id: string;
+  job_type: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  payload_json?: string;
+  scheduled_for?: string;
+  attempts?: number;
+  last_error?: string;
+  run_log_id?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RuntimeRunLogRecord {
+  id?: number;
+  user_id: string;
+  job_type: string;
+  status: 'running' | 'succeeded' | 'failed';
+  started_at?: string;
+  finished_at?: string;
+  message?: string;
+  stats_json?: string;
+  error?: string;
+}
+
 export class DatabaseManager {
   private db: Database.Database;
 
@@ -265,6 +327,241 @@ export class DatabaseManager {
   getFeedbackByRecommendation(recommendationId: number): FeedbackLog[] {
     const stmt = this.db.prepare('SELECT * FROM feedback_log WHERE recommendation_id = ? ORDER BY created_at DESC');
     return stmt.all(recommendationId) as FeedbackLog[];
+  }
+
+  /**
+   * 运行配置相关操作
+   */
+  upsertRuntimeUser(record: RuntimeUserRecord): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO runtime_users (
+        user_id, account_handle, profile_path, cron_schedule, timezone,
+        rate_limit_max_concurrent, rate_limit_request_delay_ms
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        account_handle = excluded.account_handle,
+        profile_path = excluded.profile_path,
+        cron_schedule = excluded.cron_schedule,
+        timezone = excluded.timezone,
+        rate_limit_max_concurrent = excluded.rate_limit_max_concurrent,
+        rate_limit_request_delay_ms = excluded.rate_limit_request_delay_ms,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+    stmt.run(
+      record.user_id,
+      record.account_handle,
+      record.profile_path || null,
+      record.cron_schedule,
+      record.timezone,
+      record.rate_limit_max_concurrent,
+      record.rate_limit_request_delay_ms
+    );
+  }
+
+  getRuntimeUser(userId: string): RuntimeUserRecord | undefined {
+    const stmt = this.db.prepare('SELECT * FROM runtime_users WHERE user_id = ?');
+    return stmt.get(userId) as RuntimeUserRecord | undefined;
+  }
+
+  listRuntimeUsers(): RuntimeUserRecord[] {
+    const stmt = this.db.prepare('SELECT * FROM runtime_users ORDER BY created_at DESC');
+    return stmt.all() as RuntimeUserRecord[];
+  }
+
+  deleteRuntimeUser(userId: string): void {
+    const stmt = this.db.prepare('DELETE FROM runtime_users WHERE user_id = ?');
+    stmt.run(userId);
+  }
+
+  upsertRuntimeLarkConfig(record: RuntimeLarkConfigRecord): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO runtime_lark_configs (
+        user_id, app_id, app_secret_encrypted, base_id, default_receiver_id
+      )
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        app_id = excluded.app_id,
+        app_secret_encrypted = excluded.app_secret_encrypted,
+        base_id = excluded.base_id,
+        default_receiver_id = excluded.default_receiver_id,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+    stmt.run(
+      record.user_id,
+      record.app_id || null,
+      record.app_secret_encrypted || null,
+      record.base_id || null,
+      record.default_receiver_id || null
+    );
+  }
+
+  getRuntimeLarkConfig(userId: string): RuntimeLarkConfigRecord | undefined {
+    const stmt = this.db.prepare('SELECT * FROM runtime_lark_configs WHERE user_id = ?');
+    return stmt.get(userId) as RuntimeLarkConfigRecord | undefined;
+  }
+
+  upsertRuntimeSourceConfig(record: RuntimeSourceConfigRecord): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO runtime_source_configs (user_id, source, enabled, config_json)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, source) DO UPDATE SET
+        enabled = excluded.enabled,
+        config_json = excluded.config_json,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+    stmt.run(
+      record.user_id,
+      record.source,
+      record.enabled,
+      record.config_json || null
+    );
+  }
+
+  getRuntimeSourceConfigs(userId: string): RuntimeSourceConfigRecord[] {
+    const stmt = this.db.prepare('SELECT * FROM runtime_source_configs WHERE user_id = ?');
+    return stmt.all(userId) as RuntimeSourceConfigRecord[];
+  }
+
+  upsertRuntimeCredential(record: RuntimeCredentialRecord): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO runtime_credentials (user_id, credential_key, encrypted_value)
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id, credential_key) DO UPDATE SET
+        encrypted_value = excluded.encrypted_value,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+    stmt.run(record.user_id, record.credential_key, record.encrypted_value);
+  }
+
+  getRuntimeCredentials(userId: string): RuntimeCredentialRecord[] {
+    const stmt = this.db.prepare('SELECT * FROM runtime_credentials WHERE user_id = ?');
+    return stmt.all(userId) as RuntimeCredentialRecord[];
+  }
+
+  deleteRuntimeCredential(userId: string, credentialKey: string): void {
+    const stmt = this.db.prepare('DELETE FROM runtime_credentials WHERE user_id = ? AND credential_key = ?');
+    stmt.run(userId, credentialKey);
+  }
+
+  insertRuntimeJob(job: RuntimeJobRecord): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO runtime_jobs (user_id, job_type, status, payload_json, scheduled_for)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      job.user_id,
+      job.job_type,
+      job.status,
+      job.payload_json || null,
+      job.scheduled_for || null
+    );
+    return Number(result.lastInsertRowid);
+  }
+
+  claimNextRuntimeJob(): RuntimeJobRecord | undefined {
+    const select = this.db.prepare(`
+      SELECT * FROM runtime_jobs
+      WHERE status = 'queued'
+        AND datetime(COALESCE(scheduled_for, CURRENT_TIMESTAMP)) <= datetime('now')
+      ORDER BY datetime(COALESCE(scheduled_for, CURRENT_TIMESTAMP)) ASC, id ASC
+      LIMIT 1
+    `);
+    const update = this.db.prepare(`
+      UPDATE runtime_jobs
+      SET status = 'running', attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status = 'queued'
+    `);
+
+    const transaction = this.db.transaction(() => {
+      const job = select.get() as RuntimeJobRecord | undefined;
+      if (!job?.id) {
+        return undefined;
+      }
+
+      const result = update.run(job.id);
+      return result.changes === 1
+        ? { ...job, status: 'running' as const, attempts: (job.attempts || 0) + 1 }
+        : undefined;
+    });
+
+    return transaction();
+  }
+
+  updateRuntimeJobStatus(
+    id: number,
+    status: RuntimeJobRecord['status'],
+    options: { lastError?: string; runLogId?: number } = {}
+  ): void {
+    const stmt = this.db.prepare(`
+      UPDATE runtime_jobs
+      SET status = ?, last_error = ?, run_log_id = COALESCE(?, run_log_id), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(status, options.lastError || null, options.runLogId || null, id);
+  }
+
+  listRuntimeJobs(limit: number = 50): RuntimeJobRecord[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM runtime_jobs
+      ORDER BY datetime(created_at) DESC, id DESC
+      LIMIT ?
+    `);
+    return stmt.all(limit) as RuntimeJobRecord[];
+  }
+
+  insertRuntimeRunLog(log: RuntimeRunLogRecord): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO runtime_run_logs (user_id, job_type, status, message, stats_json, error)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      log.user_id,
+      log.job_type,
+      log.status,
+      log.message || null,
+      log.stats_json || null,
+      log.error || null
+    );
+    return Number(result.lastInsertRowid);
+  }
+
+  finishRuntimeRunLog(
+    id: number,
+    status: RuntimeRunLogRecord['status'],
+    options: { message?: string; statsJson?: string; error?: string } = {}
+  ): void {
+    const stmt = this.db.prepare(`
+      UPDATE runtime_run_logs
+      SET status = ?, finished_at = CURRENT_TIMESTAMP, message = ?, stats_json = ?, error = ?
+      WHERE id = ?
+    `);
+    stmt.run(
+      status,
+      options.message || null,
+      options.statsJson || null,
+      options.error || null,
+      id
+    );
+  }
+
+  listRuntimeRunLogs(userId?: string, limit: number = 50): RuntimeRunLogRecord[] {
+    if (userId) {
+      const stmt = this.db.prepare(`
+        SELECT * FROM runtime_run_logs
+        WHERE user_id = ?
+        ORDER BY datetime(started_at) DESC, id DESC
+        LIMIT ?
+      `);
+      return stmt.all(userId, limit) as RuntimeRunLogRecord[];
+    }
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM runtime_run_logs
+      ORDER BY datetime(started_at) DESC, id DESC
+      LIMIT ?
+    `);
+    return stmt.all(limit) as RuntimeRunLogRecord[];
   }
 
   /**

@@ -10,6 +10,7 @@
 
 import { DatabaseManager } from './db/index.js';
 import { DeepSeekClient } from './ai/deepseek.js';
+import { GrokBridgeClient } from './ai/grok-bridge.js';
 import { DraftGenerator } from './generator/index.js';
 import { FeishuClient } from './feishu/index.js';
 import { FilteredContent } from './filter/types.js';
@@ -26,7 +27,17 @@ async function main() {
   // 初始化组件
   const db = new DatabaseManager(config.dbPath);
   const deepseekClient = new DeepSeekClient(config.deepseek.apiKey, config.deepseek.baseURL);
-  const draftGenerator = new DraftGenerator(deepseekClient);
+  const draftClient = config.grokBridge.url
+    ? new GrokBridgeClient(
+      config.grokBridge.url,
+      config.grokBridge.token,
+      config.grokBridge.timeoutMs
+    )
+    : deepseekClient;
+  const draftGenerator = new DraftGenerator(
+    draftClient,
+    config.grokBridge.url ? 'grok-bridge' : 'deepseek-chat'
+  );
   const feishuClient = new FeishuClient(db);
 
   try {
@@ -126,6 +137,22 @@ async function main() {
     const draftResults = await draftGenerator.generateBatch(testContents, parsedProfile);
 
     logger.info(`Generated drafts for ${draftResults.length} contents`);
+    const contentById = new Map(
+      testContents.map((content) => [content.contentId, content])
+    );
+    const recommendations = draftResults
+      .map((result) => {
+        const content = contentById.get(result.contentId);
+        if (!content || result.drafts.length === 0) {
+          return null;
+        }
+
+        return {
+          content,
+          drafts: result.drafts,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
 
     // 打印草稿预览
     draftResults.forEach((result, index) => {
@@ -147,12 +174,6 @@ async function main() {
       logger.info('You can get your open_id by sending a message to the bot');
     } else {
       await feishuClient.initialize(defaultReceiverId);
-
-      // 准备推荐数据
-      const recommendations = testContents.map((content, index) => ({
-        content,
-        drafts: draftResults[index]?.drafts || [],
-      }));
 
       // 推送
       const pushResults = await feishuClient.pushRecommendations(recommendations);

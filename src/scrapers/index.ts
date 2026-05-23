@@ -6,3 +6,5 @@ export { ZhihuScraper } from './zhihu.js';
 export { ProductHuntScraper } from './producthunt.js';
 export { RedditScraper } from './reddit.js';
 export { V2EXScraper } from './v2ex.js';
+export { DouyinScraper } from './douyin.js';
+export { XiaohongshuScraper } from './xiaohongshu.js';

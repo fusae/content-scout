@@ -2,6 +2,11 @@ import * as lark from '@larksuiteoapi/node-sdk';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
+export interface LarkClientOptions {
+  appId?: string;
+  appSecret?: string;
+}
+
 /**
  * 飞书客户端封装
  * 封装飞书 SDK 的基础功能
@@ -12,9 +17,9 @@ export class LarkClient {
   private appId: string;
   private appSecret: string;
 
-  constructor() {
-    this.appId = config.lark.appId;
-    this.appSecret = config.lark.appSecret;
+  constructor(options: LarkClientOptions = {}) {
+    this.appId = options.appId || config.lark.appId;
+    this.appSecret = options.appSecret || config.lark.appSecret;
 
     if (!this.appId || !this.appSecret) {
       throw new Error('Lark App ID and App Secret are required');

@@ -81,7 +81,7 @@ export class CardBuilder {
             {
               tag: 'button',
               text: {
-                content: '📋 复制草稿1',
+                content: '📋 复制短版',
                 tag: 'plain_text',
               },
               type: 'primary',
@@ -95,7 +95,7 @@ export class CardBuilder {
             {
               tag: 'button',
               text: {
-                content: '📋 复制草稿2',
+                content: '📋 复制中版',
                 tag: 'plain_text',
               },
               type: 'primary',
@@ -109,7 +109,7 @@ export class CardBuilder {
             {
               tag: 'button',
               text: {
-                content: '📋 复制草稿3',
+                content: '📋 复制长版',
                 tag: 'plain_text',
               },
               type: 'primary',
@@ -182,7 +182,7 @@ export class CardBuilder {
       elements.push({
         tag: 'div',
         text: {
-          content: `**草稿 ${index + 1} (${styleLabel})：**\n${draft.content}\n\n_${draft.reasoning}_\n\n字数: ${draft.length}`,
+          content: `**草稿 ${index + 1} (${styleLabel})：**\n${draft.content}\n\n生成思路：${draft.reasoning}\n字数: ${draft.length}`,
           tag: 'lark_md',
         },
       });
@@ -203,9 +203,12 @@ export class CardBuilder {
    */
   private static getStyleLabel(style: string): string {
     const labels: Record<string, string> = {
-      opinion: '观点型',
-      share: '分享型',
-      question: '提问型',
+      short: '短版',
+      medium: '中版',
+      long: '长版',
+      opinion: '短版',
+      share: '中版',
+      question: '长版',
     };
     return labels[style] || style;
   }
@@ -239,7 +242,7 @@ export class CardBuilder {
         {
           tag: 'div',
           text: {
-            content: `为你精选了 **${count}** 条优质内容，每条都附带 3 个不同风格的推文草稿。\n\n你可以直接复制发布，也可以把合适的话题一键转成文章任务。`,
+            content: `为你精选了 **${count}** 条优质内容，每条都附带短/中/长 3 个推文草稿。\n\n你可以直接复制发布，也可以把合适的话题一键转成文章任务。`,
             tag: 'lark_md',
           },
         },
@@ -252,7 +255,7 @@ export class CardBuilder {
    */
   static buildFeedbackCard(action: 'accepted' | 'rejected', draftIndex?: number): any {
     const messages = {
-      accepted: `✅ 草稿 ${(draftIndex || 0) + 1} 已复制！\n\n记得替换 [链接] 为实际 URL，然后去 X 发布吧！`,
+      accepted: `✅ ${this.getDraftIndexLabel(draftIndex)}已复制！\n\n去 X 发布吧。`,
       rejected: '👌 已记录你的反馈！\n\n我们会根据你的偏好优化后续推荐。',
     };
 
@@ -277,5 +280,10 @@ export class CardBuilder {
         },
       ],
     };
+  }
+
+  private static getDraftIndexLabel(draftIndex?: number): string {
+    const labels = ['短版草稿', '中版草稿', '长版草稿'];
+    return labels[draftIndex || 0] || `草稿 ${(draftIndex || 0) + 1}`;
   }
 }

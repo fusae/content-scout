@@ -8,13 +8,14 @@ import { FeedbackLearner } from './feedback/index.js';
 import { Scheduler } from './scheduler/index.js';
 import { EmbeddingClient } from './ai/embedding.js';
 import { DeepSeekClient } from './ai/deepseek.js';
+import { GrokBridgeClient } from './ai/grok-bridge.js';
 import { logger } from './utils/logger.js';
-import { config } from './config.js';
+import { config, localRuntimeConfig } from './config.js';
 
 async function main() {
   logger.info('========== X Content Scout 启动 ==========');
   logger.info(`环境: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`账号: ${config.xAccount.handle}`);
+  logger.info(`账号: ${localRuntimeConfig.accountHandle}`);
 
   try {
     // 1. 初始化数据库
@@ -36,19 +37,29 @@ async function main() {
 
     // 3. 初始化核心模块
     logger.info('初始化核心模块...');
-    const aggregator = new ContentAggregator(db);
+    const aggregator = new ContentAggregator(db, localRuntimeConfig);
     const profileManager = new ProfileManager(
       db,
       config.embedding.apiKey,
-      config.xAccount.handle,
+      localRuntimeConfig.accountHandle,
       config.deepseek.apiKey,
       config.deepseek.baseURL,
       config.embedding.baseURL,
       config.embedding.model,
-      config.profile.path
+      localRuntimeConfig.profilePath
     );
     const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
-    const draftGenerator = new DraftGenerator(deepseekClient);
+    const draftClient = config.grokBridge.url
+      ? new GrokBridgeClient(
+        config.grokBridge.url,
+        config.grokBridge.token,
+        config.grokBridge.timeoutMs
+      )
+      : deepseekClient;
+    const draftGenerator = new DraftGenerator(
+      draftClient,
+      config.grokBridge.url ? 'grok-bridge' : 'deepseek-chat'
+    );
     const feishuClient = new FeishuClient(db);
     const feedbackLearner = new FeedbackLearner(db);
 
@@ -70,7 +81,7 @@ async function main() {
 
     // 5. 初始化飞书客户端
     logger.info('初始化飞书客户端...');
-    await feishuClient.initialize(config.lark.defaultReceiverId || undefined);
+    await feishuClient.initialize(localRuntimeConfig.lark.defaultReceiverId || undefined);
 
     // 6. 创建调度器
     logger.info('创建定时任务调度器...');

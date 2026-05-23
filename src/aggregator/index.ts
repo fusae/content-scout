@@ -10,8 +10,12 @@ import {
   ProductHuntScraper,
   RedditScraper,
   V2EXScraper,
+  DouyinScraper,
+  XiaohongshuScraper,
   BaseScraper,
 } from '../scrapers/index.js';
+import { localRuntimeConfig } from '../config.js';
+import type { SourceName, UserRuntimeConfig } from '../types/runtime-config.js';
 import crypto from 'crypto';
 
 /**
@@ -22,25 +26,33 @@ export class ContentAggregator {
   private scrapers: Map<string, BaseScraper>;
   private rateLimiter: RateLimiter;
 
-  constructor(db: DatabaseManager) {
+  constructor(db: DatabaseManager, runtimeConfig: UserRuntimeConfig = localRuntimeConfig) {
     this.db = db;
     this.rateLimiter = new RateLimiter({
-      maxConcurrent: 3,
-      minDelay: 1000, // 1秒最小间隔
+      maxConcurrent: runtimeConfig.rateLimit.maxConcurrent,
+      minDelay: runtimeConfig.rateLimit.requestDelayMs,
     });
 
-    // 初始化所有爬虫
-    this.scrapers = new Map<string, BaseScraper>([
-      ['hackernews', new HackerNewsScraper(this.rateLimiter)],
-      ['github', new GitHubTrendingScraper(this.rateLimiter)],
-      ['x', new XScraper(this.rateLimiter)],
-      ['zhihu', new ZhihuScraper(this.rateLimiter)],
-      ['producthunt', new ProductHuntScraper(this.rateLimiter)],
-      ['reddit', new RedditScraper(this.rateLimiter)],
-      ['v2ex', new V2EXScraper(this.rateLimiter)],
-    ]);
+    const sourceConfig = runtimeConfig.sources;
+    const scraperEntries: Array<[SourceName, BaseScraper] | null> = [
+      sourceConfig.hackernews.enabled ? ['hackernews', new HackerNewsScraper(this.rateLimiter)] : null,
+      sourceConfig.github.enabled ? ['github', new GitHubTrendingScraper(this.rateLimiter)] : null,
+      sourceConfig.x.enabled ? ['x', new XScraper(this.rateLimiter)] : null,
+      sourceConfig.zhihu.enabled ? ['zhihu', new ZhihuScraper(this.rateLimiter)] : null,
+      sourceConfig.producthunt.enabled ? ['producthunt', new ProductHuntScraper(this.rateLimiter)] : null,
+      sourceConfig.reddit.enabled ? ['reddit', new RedditScraper(this.rateLimiter, sourceConfig.reddit)] : null,
+      sourceConfig.v2ex.enabled ? ['v2ex', new V2EXScraper(this.rateLimiter)] : null,
+      sourceConfig.douyin.enabled ? ['douyin', new DouyinScraper(this.rateLimiter, sourceConfig.douyin)] : null,
+      sourceConfig.xiaohongshu.enabled ? ['xiaohongshu', new XiaohongshuScraper(this.rateLimiter, sourceConfig.xiaohongshu)] : null,
+    ];
 
-    logger.info(`ContentAggregator initialized with ${this.scrapers.size} scrapers`);
+    this.scrapers = new Map<string, BaseScraper>(
+      scraperEntries.filter((entry): entry is [SourceName, BaseScraper] => entry !== null)
+    );
+
+    logger.info(
+      `ContentAggregator initialized for ${runtimeConfig.userId} with ${this.scrapers.size} scrapers`
+    );
   }
 
   /**

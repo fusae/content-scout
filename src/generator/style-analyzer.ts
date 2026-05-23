@@ -19,7 +19,7 @@ export class StyleAnalyzer {
 - 平均长度：${writingStyle.avgLength} 字符
 - Emoji 使用：${writingStyle.emojiUsage}
 - 常用 Emoji：${writingStyle.commonEmojis.join(' ')}
-- 推文结构：${writingStyle.structure || '实用导向，避坑分享'}
+- 推文结构：${writingStyle.structure || '像真人短帖，先给判断，再给理由'}
 
 主题领域：
 ${topics.join(', ')}

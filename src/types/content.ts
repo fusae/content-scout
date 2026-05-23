@@ -2,7 +2,7 @@
  * 内容项接口 - 标准化的内容数据结构
  */
 export interface ContentItem {
-  source: 'x' | 'hackernews' | 'github' | 'zhihu' | 'producthunt' | 'reddit' | 'v2ex';
+  source: 'x' | 'hackernews' | 'github' | 'zhihu' | 'producthunt' | 'reddit' | 'v2ex' | 'douyin' | 'xiaohongshu';
   title: string;
   content: string;
   url: string;
