@@ -8,6 +8,8 @@ import { AccountProfile } from '../profile/types.js';
  * 使用 DeepSeek 对候选内容进行深度评分和排序
  */
 export class AIRanker {
+  private lastFallbackReason = '';
+
   constructor(private deepseekClient: DeepSeekClient) {}
 
   /**
@@ -24,6 +26,7 @@ export class AIRanker {
   ): Promise<FilteredContent[]> {
     logger.info(`Starting AI ranking: ${candidates.length} candidates, minScore=${minScore}`);
     const startTime = Date.now();
+    this.lastFallbackReason = '';
 
     try {
       // 1. 构建 Prompt
@@ -48,11 +51,16 @@ export class AIRanker {
 
       return rankedContents;
     } catch (error) {
+      this.lastFallbackReason = error instanceof Error ? error.message : String(error);
       logger.error('AI ranking failed:', error);
       // 降级：返回原始候选列表（按 embedding 相似度排序）
       logger.warn('Falling back to embedding similarity ranking');
       return candidates;
     }
+  }
+
+  getLastFallbackReason(): string {
+    return this.lastFallbackReason;
   }
 
   /**

@@ -91,6 +91,7 @@ export class FilterEngine {
     // 3. AI 精排
     const aiStart = Date.now();
     const ranked = await this.aiRanker.rank(candidates, profile, opts.minAiScore);
+    const aiFallbackReason = this.aiRanker.getLastFallbackReason();
     const aiDuration = Date.now() - aiStart;
 
     if (ranked.length === 0) {
@@ -110,6 +111,8 @@ export class FilterEngine {
             overallStart,
             embeddingFallback: Boolean(embeddingFallbackReason),
             embeddingFallbackReason,
+            aiFallback: Boolean(aiFallbackReason),
+            aiFallbackReason,
           });
         }
       }
@@ -129,6 +132,8 @@ export class FilterEngine {
       totalDuration,
       embeddingFallback: Boolean(embeddingFallbackReason),
       embeddingFallbackReason,
+      aiFallback: Boolean(aiFallbackReason),
+      aiFallbackReason,
     };
 
     logger.info('=== Filter Engine Completed ===');
@@ -356,6 +361,8 @@ export class FilterEngine {
       overallStart: number;
       embeddingFallback?: boolean;
       embeddingFallbackReason?: string;
+      aiFallback?: boolean;
+      aiFallbackReason?: string;
     }
   ): { contents: FilteredContent[]; stats: FilterStats } {
     const filtered = this.applyFilters(ranked, options);

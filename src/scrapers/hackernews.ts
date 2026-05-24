@@ -22,6 +22,10 @@ export class HackerNewsScraper extends BaseScraper {
   protected source = 'hackernews';
   protected baseUrl = 'https://hacker-news.firebaseio.com/v0';
 
+  protected healthCheckUrl(): string {
+    return `${this.baseUrl}/topstories.json`;
+  }
+
   async scrape(): Promise<ContentItem[]> {
     try {
       logger.info('Starting Hacker News scrape...');

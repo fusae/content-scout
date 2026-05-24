@@ -28,4 +28,8 @@ export interface ScraperStats {
   itemsSaved: number;
   errors: number;
   duration: number; // 毫秒
+  failureType?: import('../utils/failure.js').FailureType;
+  userMessage?: string;
+  recoverable?: boolean;
+  actionLabel?: string;
 }

@@ -4,6 +4,7 @@ import { logger } from '../utils/logger.js';
 import { retry, retryStrategies } from '../utils/retry.js';
 import { config } from '../config.js';
 import { hasLocalBrowserProfile, launchLocalBrowser } from './local-browser.js';
+import { RecoverableFailure } from '../utils/failure.js';
 import type { RateLimiter } from '../utils/rate-limiter.js';
 import type { XiaohongshuSourceRuntimeConfig } from '../types/runtime-config.js';
 import type { Page } from 'puppeteer';
@@ -64,6 +65,11 @@ interface XiaohongshuSearchItem {
 export class XiaohongshuScraper extends BaseScraper {
   protected source = 'xiaohongshu';
   protected baseUrl = 'https://www.xiaohongshu.com';
+  protected healthCheckKeywords = ['小红书', 'xiaohongshu'];
+
+  protected healthCheckUrl(): string {
+    return `${this.baseUrl}/explore`;
+  }
   private sourceConfig: XiaohongshuSourceRuntimeConfig;
   private keywords: string[];
 
@@ -101,6 +107,9 @@ export class XiaohongshuScraper extends BaseScraper {
 
       return dedupedItems;
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.error('Xiaohongshu scrape failed:', error as Error);
       return [];
     }
@@ -123,6 +132,9 @@ export class XiaohongshuScraper extends BaseScraper {
         });
         await this.randomDelay(800, 1500);
       } catch (error) {
+        if (error instanceof RecoverableFailure) {
+          throw error;
+        }
         logger.error(`Failed to search Xiaohongshu keyword "${keyword}":`, error as Error);
       }
     }
@@ -159,6 +171,9 @@ export class XiaohongshuScraper extends BaseScraper {
       const response = await client.searchNotes(keyword, 1, 20, 'popularity_descending', 0);
       return this.parseSearchItems(response);
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.warn(`Redbook Xiaohongshu search failed for "${keyword}": ${(error as Error).message}`);
       return this.searchByKeyword(keyword);
     }
@@ -176,8 +191,7 @@ export class XiaohongshuScraper extends BaseScraper {
 
     const response = await this.fetchSearchApi(keyword);
     if (response.success === false || response.code === -101) {
-      logger.warn(`Xiaohongshu keyword search requires login cookie/signature: ${keyword}`);
-      return this.searchByBrowser(keyword);
+      throw new RecoverableFailure('auth_required', '小红书登录态失效，需要重新登录', true, '重新登录');
     }
 
     const apiNotes = (response.data?.items || [])
@@ -193,7 +207,7 @@ export class XiaohongshuScraper extends BaseScraper {
 
   private async searchByBrowser(keyword: string): Promise<XiaohongshuNote[]> {
     if (!hasLocalBrowserProfile('xiaohongshu', this.sourceConfig.userId)) {
-      return [];
+      throw new RecoverableFailure('auth_required', '小红书需要先完成本地登录', true, '重新登录');
     }
 
     let browser;
@@ -212,22 +226,22 @@ export class XiaohongshuScraper extends BaseScraper {
           .evaluate(() => /登录后查看搜索结果|手机号登录|扫码/.test(document.body.innerText || ''))
           .catch(() => false);
         if (needsLogin) {
-          logger.warn(`Xiaohongshu browser search needs login: ${keyword}`);
-        } else {
-          logger.warn(`Xiaohongshu browser search did not capture result response: ${keyword}`);
+          throw new RecoverableFailure('auth_required', '小红书登录态失效，需要重新登录', true, '重新登录');
         }
-        return [];
+        throw new RecoverableFailure('platform_changed', '小红书搜索接口未返回结果，可能是反爬或页面改版', false, '等待适配');
       }
 
       if (response.success === false || response.code === -101) {
-        logger.warn(`Xiaohongshu browser search rejected login state: ${keyword}`);
-        return [];
+        throw new RecoverableFailure('auth_required', '小红书登录态失效，需要重新登录', true, '重新登录');
       }
 
       return (response.data?.items || [])
         .map((item) => this.convertSearchItem(item))
         .filter((item): item is XiaohongshuNote => Boolean(item));
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.warn(`Xiaohongshu browser search failed for "${keyword}": ${(error as Error).message}`);
       return [];
     } finally {

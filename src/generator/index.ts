@@ -22,6 +22,7 @@ export interface DraftChatClient {
 export class DraftGenerator {
   private readonly DEFAULT_STYLES: DraftStyle[] = ['short', 'medium', 'long'];
   private readonly MAX_LENGTH = 4000;
+  private lastError?: Error;
 
   constructor(
     private chatClient: DraftChatClient,
@@ -88,6 +89,7 @@ export class DraftGenerator {
     logger.info(`Generating drafts for ${contents.length} contents`);
 
     const results: DraftGenerationResult[] = [];
+    this.lastError = undefined;
 
     for (const content of contents) {
       try {
@@ -97,6 +99,7 @@ export class DraftGenerator {
         // 添加延迟避免 API 限流
         await this.delay(500);
       } catch (error) {
+        this.lastError = error instanceof Error ? error : new Error(String(error));
         logger.error(`Failed to generate drafts for content #${content.contentId}, skipping`, error);
         // 继续处理下一条
       }
@@ -104,6 +107,10 @@ export class DraftGenerator {
 
     logger.info(`Batch generation completed: ${results.length}/${contents.length} succeeded`);
     return results;
+  }
+
+  getLastError(): Error | undefined {
+    return this.lastError;
   }
 
   /**

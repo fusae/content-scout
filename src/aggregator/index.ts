@@ -17,6 +17,7 @@ import {
 } from '../scrapers/index.js';
 import { localRuntimeConfig } from '../config.js';
 import type { SourceName, UserRuntimeConfig } from '../types/runtime-config.js';
+import { classifyFailure, FailureInfo } from '../utils/failure.js';
 import crypto from 'crypto';
 
 export interface AggregationProgressEvent {
@@ -112,6 +113,7 @@ export class ContentAggregator {
         stats.push(result.value);
       } else {
         const source = Array.from(this.scrapers.keys())[index];
+        const failure = classifyFailure(result.reason, source);
         logger.error(`Scraper ${source} failed:`, result.reason);
         stats.push({
           source,
@@ -120,6 +122,7 @@ export class ContentAggregator {
           itemsSaved: 0,
           errors: 1,
           duration: 0,
+          ...failure,
         });
       }
     });
@@ -150,6 +153,7 @@ export class ContentAggregator {
         const stat = await this.runScraper(source, scraper);
         stats.push(stat);
       } catch (error) {
+        const failure = classifyFailure(error, source);
         logger.error(`Scraper ${source} failed:`, error as Error);
         stats.push({
           source,
@@ -158,6 +162,7 @@ export class ContentAggregator {
           itemsSaved: 0,
           errors: 1,
           duration: 0,
+          ...failure,
         });
       }
     }
@@ -175,9 +180,24 @@ export class ContentAggregator {
     let itemsDeduped = 0;
     let itemsSaved = 0;
     let errors = 0;
+    let failure: FailureInfo | undefined;
 
     try {
       logger.info(`Running scraper: ${source}`);
+      const preflight = await scraper.preflight();
+      if (!preflight.ok) {
+        failure = preflight.failure;
+        logger.warn(`Scraper ${source} preflight failed: ${failure?.userMessage || 'unknown failure'}`);
+        return {
+          source,
+          itemsCollected: 0,
+          itemsDeduped: 0,
+          itemsSaved: 0,
+          errors: 1,
+          duration: Date.now() - startTime,
+          ...failure,
+        };
+      }
 
       // 执行爬取
       const items = await scraper.scrape();
@@ -206,6 +226,7 @@ export class ContentAggregator {
         `Scraper ${source} completed: ${itemsCollected} collected, ${itemsDeduped} duplicates, ${itemsSaved} saved`
       );
     } catch (error) {
+      failure = classifyFailure(error, source);
       logger.error(`Scraper ${source} encountered an error:`, error as Error);
       errors = 1;
     }
@@ -217,6 +238,7 @@ export class ContentAggregator {
       itemsSaved,
       errors,
       duration: Date.now() - startTime,
+      ...failure,
     };
   }
 

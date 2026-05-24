@@ -23,6 +23,10 @@ export class V2EXScraper extends BaseScraper {
   protected source = 'v2ex';
   protected baseUrl = 'https://www.v2ex.com/api';
 
+  protected healthCheckUrl(): string {
+    return `${this.baseUrl}/topics/hot.json`;
+  }
+
   async scrape(): Promise<ContentItem[]> {
     try {
       logger.info('Starting V2EX scrape...');

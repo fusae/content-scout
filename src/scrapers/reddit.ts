@@ -27,6 +27,11 @@ export class RedditScraper extends BaseScraper {
     this.subreddits = sourceConfig?.subreddits || config.reddit.subreddits;
   }
 
+  protected healthCheckUrl(): string {
+    const subreddit = this.subreddits[0] || 'technology';
+    return `${this.baseUrl}/r/${subreddit}/.rss`;
+  }
+
   async scrape(): Promise<ContentItem[]> {
     try {
       logger.info('Starting Reddit scrape...');

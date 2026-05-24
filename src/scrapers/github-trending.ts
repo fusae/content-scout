@@ -19,6 +19,11 @@ interface GitHubRepo {
 export class GitHubTrendingScraper extends BaseScraper {
   protected source = 'github';
   protected baseUrl = 'https://github.com/trending';
+  protected healthCheckKeywords = ['Box-row', 'article', 'Trending'];
+
+  protected healthCheckUrl(): string {
+    return `${this.baseUrl}?since=daily`;
+  }
 
   async scrape(): Promise<ContentItem[]> {
     try {

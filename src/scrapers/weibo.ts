@@ -3,6 +3,7 @@ import { ContentItem } from '../types/content.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { hasLocalBrowserProfile, launchLocalBrowser } from './local-browser.js';
+import { RecoverableFailure } from '../utils/failure.js';
 import type { RateLimiter } from '../utils/rate-limiter.js';
 import type { KeywordCookieSourceRuntimeConfig } from '../types/runtime-config.js';
 
@@ -18,6 +19,11 @@ interface WeiboSearchItem {
 export class WeiboScraper extends BaseScraper {
   protected source = 'weibo';
   protected baseUrl = 'https://s.weibo.com';
+  protected healthCheckKeywords = ['Sina Visitor System', '微博', 'weibo'];
+
+  protected healthCheckUrl(): string {
+    return `${this.baseUrl}/weibo?q=AI`;
+  }
   private sourceConfig: KeywordCookieSourceRuntimeConfig;
   private keywords: string[];
 
@@ -50,6 +56,9 @@ export class WeiboScraper extends BaseScraper {
           });
           await this.randomDelay(1000, 1800);
         } catch (error) {
+          if (error instanceof RecoverableFailure) {
+            throw error;
+          }
           logger.error(`Failed to search Weibo keyword "${keyword}":`, error as Error);
         }
       }
@@ -60,6 +69,9 @@ export class WeiboScraper extends BaseScraper {
       logger.info(`Weibo scrape completed: ${dedupedItems.length} items collected`);
       return dedupedItems;
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.error('Weibo scrape failed:', error as Error);
       return [];
     }
@@ -67,8 +79,7 @@ export class WeiboScraper extends BaseScraper {
 
   private async searchByBrowser(keyword: string): Promise<WeiboSearchItem[]> {
     if (!hasLocalBrowserProfile('weibo', this.sourceConfig.userId)) {
-      logger.warn(`Weibo keyword search requires local login profile: ${keyword}`);
-      return [];
+      throw new RecoverableFailure('auth_required', '微博需要先完成本地登录', true, '重新登录');
     }
 
     let browser;
@@ -127,11 +138,14 @@ export class WeiboScraper extends BaseScraper {
       });
 
       if (items.length === 0 && needsLogin) {
-        logger.warn(`Weibo browser search needs login: ${keyword}`);
+        throw new RecoverableFailure('auth_required', '微博登录态失效，需要重新登录', true, '重新登录');
       }
 
       return items;
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.warn(`Weibo browser search failed for "${keyword}": ${(error as Error).message}`);
       return [];
     } finally {

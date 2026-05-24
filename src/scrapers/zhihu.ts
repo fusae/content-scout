@@ -3,6 +3,7 @@ import { ContentItem } from '../types/content.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { hasLocalBrowserProfile, launchLocalBrowser } from './local-browser.js';
+import { RecoverableFailure } from '../utils/failure.js';
 import type { RateLimiter } from '../utils/rate-limiter.js';
 import type { KeywordCookieSourceRuntimeConfig } from '../types/runtime-config.js';
 
@@ -29,6 +30,7 @@ interface ZhihuDailyResponse {
 export class ZhihuScraper extends BaseScraper {
   protected source = 'zhihu';
   protected baseUrl = 'https://www.zhihu.com';
+  protected healthCheckKeywords = ['知乎'];
   private sourceConfig: KeywordCookieSourceRuntimeConfig;
   private keywords: string[];
 
@@ -53,6 +55,9 @@ export class ZhihuScraper extends BaseScraper {
 
       return await this.scrapeDailyFallback();
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.error('Zhihu scrape failed:', error as Error);
       return [];
     }
@@ -69,6 +74,9 @@ export class ZhihuScraper extends BaseScraper {
         });
         await this.randomDelay(800, 1500);
       } catch (error) {
+        if (error instanceof RecoverableFailure) {
+          throw error;
+        }
         logger.error(`Failed to search Zhihu keyword "${keyword}":`, error as Error);
       }
     }
@@ -82,8 +90,7 @@ export class ZhihuScraper extends BaseScraper {
 
   private async searchByBrowser(keyword: string): Promise<ZhihuHotItem[]> {
     if (!hasLocalBrowserProfile('zhihu', this.sourceConfig.userId)) {
-      logger.warn(`Zhihu keyword search requires local login profile: ${keyword}`);
-      return [];
+      throw new RecoverableFailure('auth_required', '知乎需要先完成本地登录', true, '重新登录');
     }
 
     let browser;
@@ -135,11 +142,14 @@ export class ZhihuScraper extends BaseScraper {
       });
 
       if (items.length === 0 && needsLogin) {
-        logger.warn(`Zhihu browser search needs login: ${keyword}`);
+        throw new RecoverableFailure('auth_required', '知乎登录态失效，需要重新登录', true, '重新登录');
       }
 
       return items;
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.warn(`Zhihu browser search failed for "${keyword}": ${(error as Error).message}`);
       return [];
     } finally {

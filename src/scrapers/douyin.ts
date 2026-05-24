@@ -4,6 +4,7 @@ import { logger } from '../utils/logger.js';
 import { retry, retryStrategies } from '../utils/retry.js';
 import { config } from '../config.js';
 import { hasLocalBrowserProfile, launchLocalBrowser } from './local-browser.js';
+import { RecoverableFailure } from '../utils/failure.js';
 import type { RateLimiter } from '../utils/rate-limiter.js';
 import type { DouyinSourceRuntimeConfig } from '../types/runtime-config.js';
 import type { Page } from 'puppeteer';
@@ -62,6 +63,7 @@ interface TikTokDownloaderResponse {
 export class DouyinScraper extends BaseScraper {
   protected source = 'douyin';
   protected baseUrl = 'https://www.douyin.com';
+  protected healthCheckKeywords = ['_$jsvmprt', 'douyin', '抖音'];
   private sourceConfig: DouyinSourceRuntimeConfig;
   private keywords: string[];
 
@@ -99,6 +101,9 @@ export class DouyinScraper extends BaseScraper {
 
       return dedupedItems;
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.error('Douyin scrape failed:', error as Error);
       return [];
     }
@@ -115,6 +120,9 @@ export class DouyinScraper extends BaseScraper {
         });
         await this.randomDelay(800, 1500);
       } catch (error) {
+        if (error instanceof RecoverableFailure) {
+          throw error;
+        }
         logger.error(`Failed to search Douyin keyword "${keyword}":`, error as Error);
       }
     }
@@ -205,7 +213,7 @@ export class DouyinScraper extends BaseScraper {
         });
 
         if (response.data.status_code === 2483) {
-          logger.warn(`Douyin keyword search requires login cookie: ${keyword}`);
+          throw new RecoverableFailure('auth_required', '抖音登录态失效，需要重新登录', true, '重新登录');
         }
 
         return response.data;
@@ -234,7 +242,7 @@ export class DouyinScraper extends BaseScraper {
 
   private async searchByBrowser(keyword: string): Promise<ContentItem[]> {
     if (!hasLocalBrowserProfile('douyin', this.sourceConfig.userId)) {
-      return [];
+      throw new RecoverableFailure('auth_required', '抖音需要先完成本地登录', true, '重新登录');
     }
 
     let browser;
@@ -251,8 +259,13 @@ export class DouyinScraper extends BaseScraper {
 
       const response = await this.withTimeout(responsePromise, 30000, null);
       if (!response) {
-        logger.warn(`Douyin browser search did not capture result response: ${keyword}`);
-        return [];
+        const needsLogin = await page
+          .evaluate(() => /登录|扫码|手机号/.test(document.body.innerText || ''))
+          .catch(() => false);
+        if (needsLogin) {
+          throw new RecoverableFailure('auth_required', '抖音登录态失效，需要重新登录', true, '重新登录');
+        }
+        throw new RecoverableFailure('platform_changed', '抖音搜索接口未返回结果，可能是反爬或页面改版', false, '等待适配');
       }
 
       return this.extractAwemes(response)
@@ -260,6 +273,9 @@ export class DouyinScraper extends BaseScraper {
         .filter((item): item is ContentItem => Boolean(item))
         .filter((item) => this.validateItem(item));
     } catch (error) {
+      if (error instanceof RecoverableFailure) {
+        throw error;
+      }
       logger.warn(`Douyin browser search failed for "${keyword}": ${(error as Error).message}`);
       return [];
     } finally {

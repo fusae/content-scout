@@ -1128,6 +1128,7 @@ class AdminServer {
     let logsRefreshTimer = null;
     let knownUserIds = new Set();
     let latestRunStats = {};
+    let lastRecoveryNoticeKey = '';
     const tokenFromUrl = new URLSearchParams(window.location.search).get('token');
     if (tokenFromUrl) {
       localStorage.setItem('contentScoutAdminToken', tokenFromUrl);
@@ -1417,6 +1418,7 @@ class AdminServer {
       document.getElementById('connectionCount').textContent = \`\${connections}/4\`;
       renderPlatformHealth(config);
       document.getElementById('lastRunSummary').textContent = buildRunSummary(latestRunStats);
+      notifyRecoverableFailures();
     }
 
     function renderPlatformHealth(config) {
@@ -1444,7 +1446,7 @@ class AdminServer {
                 </div>
                 <div class="mt-1 text-xs \${health.text}">\${health.message}</div>
               </div>
-              \${health.action ? \`<button onclick="\${health.action}" class="shrink-0 text-xs font-medium text-blue-700 hover:text-blue-900">处理</button>\` : ''}
+              \${health.action ? \`<button onclick="\${health.action}" class="shrink-0 text-xs font-medium text-blue-700 hover:text-blue-900">\${health.actionLabel || '处理'}</button>\` : ''}
             </div>
           </div>
         \`;
@@ -1470,6 +1472,7 @@ class AdminServer {
           text: 'text-blue-700',
           message: '需要登录后才能抓取',
           action: \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\`,
+          actionLabel: '去登录',
         };
       }
 
@@ -1484,14 +1487,19 @@ class AdminServer {
       }
 
       if (Number(stat.errors || 0) > 0) {
-        const needsLogin = platform.needsAuth === 'cookie';
+        const failureType = stat.failureType || '';
+        const needsLogin = failureType === 'auth_required' || platform.needsAuth === 'cookie';
+        const isPlatformChanged = failureType === 'platform_changed';
         return {
-          dot: 'bg-red-500',
-          bg: 'bg-red-50',
-          border: 'border-red-100',
-          text: 'text-red-700',
-          message: needsLogin ? '抓取失败，可能需要重新登录' : '抓取失败，稍后会自动重试',
-          action: needsLogin ? \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\` : '',
+          dot: isPlatformChanged ? 'bg-yellow-500' : 'bg-red-500',
+          bg: isPlatformChanged ? 'bg-yellow-50' : 'bg-red-50',
+          border: isPlatformChanged ? 'border-yellow-100' : 'border-red-100',
+          text: isPlatformChanged ? 'text-yellow-700' : 'text-red-700',
+          message: stat.userMessage || (needsLogin ? '登录态失效，需要重新登录' : '抓取失败，稍后会自动重试'),
+          action: failureType === 'auth_required'
+            ? \`launchLogin('\${platform.id}')\`
+            : needsLogin ? \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\` : '',
+          actionLabel: stat.actionLabel || (failureType === 'auth_required' ? '重新登录' : '处理'),
         };
       }
 
@@ -1524,7 +1532,23 @@ class AdminServer {
       const drafts = stats.drafts?.drafts ?? 0;
       const failed = stats.aggregation.filter(item => Number(item.errors || 0) > 0).map(item => item.source);
       const base = \`抓到 \${collected} 条，筛选 \${selected} 条，草稿 \${drafts} 个\`;
-      return failed.length ? \`\${base}；失败：\${failed.join('、')}\` : base;
+      const notices = [
+        failed.length ? \`失败：\${failed.join('、')}\` : '',
+        stats.filtering?.userMessage,
+        stats.drafts?.userMessage,
+        stats.push?.userMessage,
+      ].filter(Boolean);
+      return notices.length ? \`\${base}；\${notices.join('；')}\` : base;
+    }
+
+    function notifyRecoverableFailures() {
+      const aggregation = Array.isArray(latestRunStats.aggregation) ? latestRunStats.aggregation : [];
+      const authFailures = aggregation.filter(item => item.failureType === 'auth_required');
+      if (!authFailures.length) return;
+      const key = authFailures.map(item => \`\${item.source}:\${item.userMessage}\`).join('|');
+      if (key === lastRecoveryNoticeKey) return;
+      lastRecoveryNoticeKey = key;
+      showToast(\`\${authFailures.map(item => item.source).join('、')} 登录态失效，请重新登录\`, 'error');
     }
 
     // Update platform status
@@ -2019,21 +2043,23 @@ class AdminServer {
         <div class="mt-3 overflow-x-auto">
           <table class="min-w-full text-xs">
             <thead>
-              <tr class="text-left text-gray-500 border-b border-gray-100">
-                <th class="py-1 pr-3">平台</th>
-                <th class="py-1 pr-3">抓取</th>
-                <th class="py-1 pr-3">入库</th>
-                <th class="py-1 pr-3">错误</th>
-              </tr>
+	              <tr class="text-left text-gray-500 border-b border-gray-100">
+	                <th class="py-1 pr-3">平台</th>
+	                <th class="py-1 pr-3">抓取</th>
+	                <th class="py-1 pr-3">入库</th>
+	                <th class="py-1 pr-3">错误</th>
+	                <th class="py-1 pr-3">原因</th>
+	              </tr>
             </thead>
             <tbody>
               \${aggregation.map(item => \`
-                <tr class="border-b border-gray-50">
-                  <td class="py-1 pr-3 font-medium text-gray-800">\${escapeHtml(item.source || '')}</td>
-                  <td class="py-1 pr-3">\${Number(item.itemsCollected || 0)}</td>
-                  <td class="py-1 pr-3">\${Number(item.itemsSaved || 0)}</td>
-                  <td class="py-1 pr-3">\${Number(item.errors || 0)}</td>
-                </tr>
+	                <tr class="border-b border-gray-50">
+	                  <td class="py-1 pr-3 font-medium text-gray-800">\${escapeHtml(item.source || '')}</td>
+	                  <td class="py-1 pr-3">\${Number(item.itemsCollected || 0)}</td>
+	                  <td class="py-1 pr-3">\${Number(item.itemsSaved || 0)}</td>
+	                  <td class="py-1 pr-3">\${Number(item.errors || 0)}</td>
+	                  <td class="py-1 pr-3 text-gray-600">\${escapeHtml(item.userMessage || item.failureType || '')}</td>
+	                </tr>
               \`).join('')}
             </tbody>
           </table>
@@ -2071,6 +2097,7 @@ class AdminServer {
 
     function formatStageData(data) {
       return Object.entries(data)
+        .filter(([, value]) => value !== undefined && value !== '')
         .map(([key, value]) => \`\${key}: \${Array.isArray(value) ? value.join(', ') : value}\`)
         .join('，');
     }

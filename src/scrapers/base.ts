@@ -3,7 +3,13 @@ import { ContentItem } from '../types/content.js';
 import { logger } from '../utils/logger.js';
 import { retry, retryStrategies } from '../utils/retry.js';
 import { RateLimiter } from '../utils/rate-limiter.js';
+import { classifyFailure, FailureInfo } from '../utils/failure.js';
 import crypto from 'crypto';
+
+export interface ScraperPreflightResult {
+  ok: boolean;
+  failure?: FailureInfo;
+}
 
 /**
  * 爬虫基类 - 提供通用功能
@@ -13,6 +19,7 @@ export abstract class BaseScraper {
   protected abstract baseUrl: string;
   protected rateLimiter: RateLimiter;
   protected axiosInstance: AxiosInstance;
+  protected healthCheckKeywords: string[] = [];
 
   private userAgents = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -39,6 +46,73 @@ export abstract class BaseScraper {
    * 抓取内容 - 子类必须实现
    */
   abstract scrape(): Promise<ContentItem[]>;
+
+  async preflight(): Promise<ScraperPreflightResult> {
+    const url = this.healthCheckUrl();
+    if (!url) {
+      return { ok: true };
+    }
+
+    try {
+      const response = await this.axiosInstance.get<string>(url, {
+        timeout: 15000,
+        responseType: 'text',
+        validateStatus: () => true,
+        headers: {
+          'User-Agent': this.getRandomUserAgent(),
+        },
+      });
+
+      if ((response.status || 0) >= 500) {
+        return {
+          ok: false,
+          failure: classifyFailure(new Error(`HTTP ${response.status}`), this.source),
+        };
+      }
+
+      if ((response.status || 0) >= 400) {
+        const rateLimited = response.status === 429;
+        return {
+          ok: false,
+          failure: {
+            failureType: rateLimited ? 'network' : 'platform_changed',
+            userMessage: rateLimited
+              ? `${this.source} 自检被限流，稍后会自动重试`
+              : `${this.source} 自检被拒绝访问，可能是反爬策略变化`,
+            recoverable: rateLimited,
+            actionLabel: rateLimited ? undefined : '等待适配',
+          },
+        };
+      }
+
+      if (this.healthCheckKeywords.length > 0) {
+        const html = typeof response.data === 'string' ? response.data : String(response.data || '');
+        const found = this.healthCheckKeywords.some((keyword) => html.includes(keyword));
+        if (!found) {
+          return {
+            ok: false,
+            failure: {
+              failureType: 'platform_changed',
+              userMessage: `${this.source} 自检失败：关键页面标记缺失，可能是平台改版或反爬`,
+              recoverable: false,
+              actionLabel: '等待适配',
+            },
+          };
+        }
+      }
+
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        failure: classifyFailure(error, this.source),
+      };
+    }
+  }
+
+  protected healthCheckUrl(): string {
+    return this.baseUrl;
+  }
 
   /**
    * 带重试的 HTTP 请求

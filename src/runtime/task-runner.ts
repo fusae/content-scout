@@ -9,6 +9,7 @@ import { ProfileManager } from '../profile/index.js';
 import { config } from '../config.js';
 import { sourceNames, UserRuntimeConfig } from '../types/runtime-config.js';
 import { logger } from '../utils/logger.js';
+import { classifyFailure } from '../utils/failure.js';
 
 export interface RuntimeTaskResult {
   aggregation: Array<{
@@ -16,6 +17,10 @@ export interface RuntimeTaskResult {
     itemsCollected: number;
     itemsSaved: number;
     errors: number;
+    failureType?: string;
+    userMessage?: string;
+    recoverable?: boolean;
+    actionLabel?: string;
   }>;
   recommendations: number;
   pushed: number;
@@ -36,6 +41,10 @@ interface RuntimeTaskProgress {
     selected: number;
     finalCount: number;
     minAiScore: number;
+    degraded?: boolean;
+    failureType?: string;
+    userMessage?: string;
+    actionLabel?: string;
   };
   drafts?: {
     contents: number;
@@ -43,12 +52,18 @@ interface RuntimeTaskProgress {
     validRecommendations: number;
     drafts: number;
     degraded?: boolean;
+    failureType?: string;
+    userMessage?: string;
+    actionLabel?: string;
   };
   push?: {
     attempted: number;
     succeeded: number;
     failed: number;
     skipped?: boolean;
+    failureType?: string;
+    userMessage?: string;
+    actionLabel?: string;
   };
   result?: RuntimeTaskResult;
 }
@@ -159,17 +174,27 @@ export class RuntimeTaskRunner {
         itemsCollected: event.stats.itemsCollected,
         itemsSaved: event.stats.itemsSaved,
         errors: event.stats.errors,
+        failureType: event.stats.failureType,
+        userMessage: event.stats.userMessage,
+        recoverable: event.stats.recoverable,
+        actionLabel: event.stats.actionLabel,
       };
       progress.aggregation = [
         ...progress.aggregation.filter((item) => item.source !== stat.source),
         stat,
       ];
-      this.logStage(runLogId, progress, '抓取', event.stats.errors ? 'failed' : 'succeeded', `${event.source} 抓取完成`, {
+      const message = event.stats.errors
+        ? `${event.source} 抓取失败：${event.stats.userMessage || '已跳过该平台'}`
+        : `${event.source} 抓取完成`;
+      this.logStage(runLogId, progress, '抓取', event.stats.errors ? 'failed' : 'succeeded', message, {
         collected: event.stats.itemsCollected,
         duplicates: event.stats.itemsDeduped,
         saved: event.stats.itemsSaved,
         errors: event.stats.errors,
         durationMs: event.stats.duration,
+        failureType: event.stats.failureType,
+        userMessage: event.stats.userMessage,
+        action: event.stats.actionLabel,
       });
     });
     const aggregation = await aggregator.aggregateAll();
@@ -199,13 +224,29 @@ export class RuntimeTaskRunner {
       finalCount: 5,
       minAiScore: 7.0,
     });
+    const embeddingFailure = filterResult.stats.embeddingFallback
+      ? classifyFailure(new Error(filterResult.stats.embeddingFallbackReason || 'Embedding unavailable'), 'Embedding')
+      : undefined;
+    const aiRankFailure = filterResult.stats.aiFallback
+      ? classifyFailure(new Error(filterResult.stats.aiFallbackReason || 'DeepSeek ranking unavailable'), 'DeepSeek')
+      : undefined;
+    const filteringMessages = [embeddingFailure?.userMessage, aiRankFailure?.userMessage].filter(Boolean);
     progress.filtering = {
       selected: filterResult.contents.length,
       finalCount: 5,
       minAiScore: 7.0,
+      degraded: Boolean(filterResult.stats.embeddingFallback || filterResult.stats.aiFallback),
+      failureType: embeddingFailure?.failureType || aiRankFailure?.failureType,
+      userMessage: filteringMessages.length ? filteringMessages.join('；') : undefined,
+      actionLabel: embeddingFailure?.actionLabel || aiRankFailure?.actionLabel,
     };
-    this.logStage(runLogId, progress, '筛选', 'succeeded', `筛选出 ${filterResult.contents.length} 条推荐候选`, {
+    this.logStage(runLogId, progress, '筛选', progress.filtering.degraded ? 'skipped' : 'succeeded', progress.filtering.degraded
+      ? `模型筛选降级，产出 ${filterResult.contents.length} 条候选`
+      : `筛选出 ${filterResult.contents.length} 条推荐候选`, {
       selected: filterResult.contents.length,
+      degraded: progress.filtering.degraded,
+      failureType: progress.filtering.failureType,
+      userMessage: progress.filtering.userMessage,
     });
 
     if (filterResult.contents.length === 0) {
@@ -243,12 +284,18 @@ export class RuntimeTaskRunner {
       })));
     }
 
+    const draftFailure = draftResults.length === 0
+      ? classifyFailure(draftGenerator.getLastError() || new Error('DeepSeek draft generation failed'), 'DeepSeek')
+      : undefined;
     progress.drafts = {
       contents: filterResult.contents.length,
       batches: draftResults.length,
       validRecommendations: recommendations.length,
       drafts: draftResults.reduce((sum, result) => sum + result.drafts.length, 0),
       degraded: draftResults.length === 0,
+      failureType: draftFailure?.failureType,
+      userMessage: draftFailure?.userMessage || (draftResults.length === 0 ? '草稿生成失败，已降级推送候选内容' : undefined),
+      actionLabel: draftFailure?.actionLabel,
     };
     this.logStage(
       runLogId,
@@ -280,6 +327,7 @@ export class RuntimeTaskRunner {
     this.logStage(runLogId, progress, '推送', 'running', `开始推送 ${recommendations.length} 条推荐到飞书`);
     let pushResults: Awaited<ReturnType<FeishuClient['pushRecommendations']>> = [];
     let pushError = '';
+    let pushFailure: ReturnType<typeof classifyFailure> | undefined;
     const feishuClient = this.createFeishuClient(configForUser);
     try {
       await feishuClient.initialize(configForUser.lark.defaultReceiverId, {
@@ -288,6 +336,7 @@ export class RuntimeTaskRunner {
       pushResults = await feishuClient.pushRecommendations(recommendations);
     } catch (error) {
       pushError = (error as Error).message;
+      pushFailure = classifyFailure(error, '飞书');
       logger.error('Feishu push failed, keeping run result available in admin logs', error as Error);
     } finally {
       feishuClient.close();
@@ -297,6 +346,9 @@ export class RuntimeTaskRunner {
       attempted: recommendations.length,
       succeeded: pushed,
       failed: pushError ? recommendations.length : pushResults.length - pushed,
+      failureType: pushFailure?.failureType,
+      userMessage: pushFailure?.userMessage,
+      actionLabel: pushFailure?.actionLabel,
     };
     this.logStage(
       runLogId,
@@ -381,6 +433,10 @@ export class RuntimeTaskRunner {
       itemsCollected: stat.itemsCollected,
       itemsSaved: stat.itemsSaved,
       errors: stat.errors,
+      failureType: stat.failureType,
+      userMessage: stat.userMessage,
+      recoverable: stat.recoverable,
+      actionLabel: stat.actionLabel,
     }));
   }
 
@@ -392,8 +448,12 @@ export class RuntimeTaskRunner {
       .map((item) => item.source);
     const drafts = progress.drafts?.drafts || 0;
     const base = `抓到 ${collected} 条，入库 ${saved} 条，筛选出 ${result.recommendations} 条，生成 ${drafts} 个草稿，推送成功 ${result.pushed} 条`;
-    return failedSources.length > 0
-      ? `${base}；${failedSources.join('、')} 抓取失败`
-      : base;
+    const notices = [
+      failedSources.length > 0 ? `${failedSources.join('、')} 抓取失败` : '',
+      progress.filtering?.userMessage,
+      progress.drafts?.userMessage,
+      progress.push?.userMessage,
+    ].filter(Boolean);
+    return notices.length > 0 ? `${base}；${notices.join('；')}` : base;
   }
 }
