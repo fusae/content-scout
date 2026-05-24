@@ -668,9 +668,52 @@ class AdminServer {
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     [x-cloak] { display: none !important; }
+    :root {
+      color-scheme: light;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --line: #dbe3ee;
+      --text: #111827;
+      --muted: #64748b;
+      --accent: #2563eb;
+    }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: #f4f7fb;
+    }
+    input, textarea, select {
+      background-color: #fff;
+      transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12) !important;
+    }
+    .admin-shell {
+      background: linear-gradient(180deg, #f8fafc 0%, #eef3f9 100%);
+    }
+    .admin-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, .06);
+      border-radius: 8px;
+    }
+    .metric-card {
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, .18);
+    }
+    .btn-primary {
+      background: #1d4ed8;
+      color: white;
+      border-radius: 8px;
+      transition: background-color .16s ease, transform .16s ease;
+    }
+    .btn-primary:hover { background: #1e40af; }
+    .btn-primary:active { transform: translateY(1px); }
   </style>
 </head>
-<body class="bg-gray-50">
+<body class="admin-shell">
   <!-- Header -->
   <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -695,7 +738,7 @@ class AdminServer {
 
       <!-- Sidebar - User List -->
       <div class="lg:col-span-1">
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div class="admin-card">
           <div class="p-4 border-b border-gray-200">
             <h2 class="text-lg font-semibold text-gray-900">用户</h2>
           </div>
@@ -726,7 +769,7 @@ class AdminServer {
       <!-- Main Panel -->
       <div class="lg:col-span-3">
         <!-- Tabs -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div class="admin-card">
           <div class="border-b border-gray-200">
             <nav class="flex -mb-px">
               <button onclick="switchTab('overview')" id="tab-overview" class="tab-button active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
@@ -750,22 +793,22 @@ class AdminServer {
             <!-- Overview Tab -->
             <div id="content-overview" class="tab-content">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div class="bg-blue-50 rounded-lg p-4">
+                <div class="metric-card bg-blue-50 p-4">
                   <div class="text-sm text-blue-600 font-medium">已启用平台</div>
                   <div id="enabledSourcesCount" class="text-2xl font-bold text-blue-900 mt-1">0</div>
                 </div>
-                <div class="bg-green-50 rounded-lg p-4">
+                <div class="metric-card bg-green-50 p-4">
                   <div class="text-sm text-green-600 font-medium">定时任务</div>
                   <div id="scheduleStatus" class="text-2xl font-bold text-green-900 mt-1">未设置</div>
                 </div>
-                <div class="bg-purple-50 rounded-lg p-4">
+                <div class="metric-card bg-purple-50 p-4">
                   <div class="text-sm text-purple-600 font-medium">平台连接</div>
                   <div id="connectionCount" class="text-2xl font-bold text-purple-900 mt-1">0/2</div>
                 </div>
               </div>
 
               <div class="flex space-x-3 mb-6">
-                <button onclick="runUser()" class="flex-1 bg-blue-600 text-white px-4 py-3 rounded-md hover:bg-blue-700 transition font-medium">
+                <button onclick="runUser()" class="flex-1 btn-primary px-4 py-3 font-medium">
                   立即运行
                 </button>
                 <button onclick="testPush()" class="flex-1 bg-green-600 text-white px-4 py-3 rounded-md hover:bg-green-700 transition font-medium">
@@ -790,6 +833,11 @@ class AdminServer {
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-2">用户 ID</label>
                       <input id="configUserId" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如: local">
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">X 创作者账号</label>
+                      <input id="configAccountHandle" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如: @myaccount">
+                      <p class="mt-1 text-xs text-gray-500">用于画像和草稿口吻，不用于抓取 X 内容。</p>
                     </div>
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-2">画像文件路径</label>
@@ -1544,6 +1592,7 @@ class AdminServer {
     function loadConfigIntoForm(config) {
       // Basic info
       document.getElementById('configUserId').value = config.userId || '';
+      document.getElementById('configAccountHandle').value = config.accountHandle || '';
       document.getElementById('configProfilePath').value = config.profilePath || '';
 
       // AI
@@ -1681,7 +1730,7 @@ class AdminServer {
         const payload = {
           ...currentConfig,
           userId: document.getElementById('configUserId').value,
-          accountHandle: currentConfig.accountHandle || document.getElementById('configUserId').value,
+          accountHandle: document.getElementById('configAccountHandle').value || document.getElementById('configUserId').value,
           profilePath: document.getElementById('configProfilePath').value,
           sources: sourcesConfig,
           schedule: {

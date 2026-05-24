@@ -20,6 +20,27 @@ src/
 
 ## 快速开始
 
+### 方式 A：桌面启动
+
+macOS 可以直接双击 `Content Scout.command`。首次启动会自动安装依赖，然后打开桌面管理窗口。
+
+也可以用 Electron 壳运行：
+
+```bash
+npm install
+npm run desktop
+```
+
+生成本机安装包：
+
+```bash
+npm run desktop:dist
+```
+
+产物会输出到 `release/`。
+
+### 方式 B：命令行启动
+
 ### 1. 安装依赖
 
 ```bash
@@ -70,6 +91,9 @@ npm start
 ## 可用命令
 
 - `npm run build` - 编译 TypeScript
+- `npm run desktop` - 启动桌面管理壳
+- `npm run desktop:dist` - 生成本机安装包
+- `npm run admin` - 启动 Web 管理后台
 - `npm run dev` - 开发模式运行
 - `npm start` - 运行编译后的代码
 - `npm run db:init` - 初始化数据库

@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "description": "X Account Content Planning Assistant",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/desktop/main.js",
   "scripts": {
     "build": "tsc && npm run copy-files",
     "copy-files": "mkdir -p dist/db && cp src/db/schema.sql dist/db/ && mkdir -p dist/data && cp -r src/data/* dist/data/",
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
+    "desktop": "npm run build && electron dist/desktop/main.js",
+    "desktop:pack": "npm run build && electron-builder --dir",
+    "desktop:dist": "npm run build && electron-builder",
+    "desktop:rebuild": "electron-builder install-app-deps",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "db:init": "tsx src/db/init.ts",
@@ -27,27 +31,60 @@
   ],
   "author": "",
   "license": "MIT",
+  "build": {
+    "appId": "app.content-scout.local",
+    "productName": "Content Scout",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office"
+    }
+  },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.29.0",
     "@lucasygu/redbook": "^0.7.2",
-    "puppeteer": "^22.15.0",
+    "axios": "^1.6.7",
     "better-sqlite3": "^9.4.0",
-    "openai": "^4.28.0",
-    "node-cron": "^3.0.3",
-    "winston": "^3.11.0",
     "dotenv": "^16.4.0",
+    "node-cron": "^3.0.3",
+    "openai": "^4.28.0",
     "p-limit": "^5.0.0",
-    "axios": "^1.6.7"
+    "puppeteer": "^22.15.0",
+    "winston": "^3.11.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
     "@types/node": "^20.11.0",
     "@types/node-cron": "^3.0.11",
-    "typescript": "^5.3.3",
-    "tsx": "^4.7.0",
-    "eslint": "^8.56.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
-    "prettier": "^3.2.4"
+    "electron": "^30.5.1",
+    "electron-builder": "^26.8.1",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.4",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
   }
 }

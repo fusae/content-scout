@@ -5,6 +5,7 @@
 .claude/
 node_modules/
 dist/
+release/
 logs/
 data/*.db*
 data/browser-profiles/
