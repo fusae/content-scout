@@ -3,8 +3,10 @@ import { ContentItem } from '../types/content.js';
 import { logger } from '../utils/logger.js';
 import { retry, retryStrategies } from '../utils/retry.js';
 import { config } from '../config.js';
+import { hasLocalBrowserProfile, launchLocalBrowser } from './local-browser.js';
 import type { RateLimiter } from '../utils/rate-limiter.js';
 import type { DouyinSourceRuntimeConfig } from '../types/runtime-config.js';
+import type { Page } from 'puppeteer';
 
 interface DouyinHotResponse {
   data?: {
@@ -66,6 +68,7 @@ export class DouyinScraper extends BaseScraper {
   constructor(rateLimiter: RateLimiter, sourceConfig?: DouyinSourceRuntimeConfig) {
     super(rateLimiter);
     this.sourceConfig = sourceConfig || {
+      userId: process.env.USER_ID || 'local',
       enabled: true,
       keywords: config.chineseSources.douyinKeywords,
       cookie: config.chineseSources.douyinCookie,
@@ -131,10 +134,16 @@ export class DouyinScraper extends BaseScraper {
 
     const response = await this.searchByKeyword(keyword);
     const awemes = this.extractAwemes(response);
-    return awemes
+    const items = awemes
       .map((aweme) => this.convertSearchItemToContentItem(aweme, keyword))
       .filter((item): item is ContentItem => Boolean(item))
       .filter((item) => this.validateItem(item));
+
+    if (items.length > 0) {
+      return items;
+    }
+
+    return this.searchByBrowser(keyword);
   }
 
   private async searchByTikTokDownloader(keyword: string): Promise<ContentItem[]> {
@@ -221,6 +230,88 @@ export class DouyinScraper extends BaseScraper {
     return (response.data || [])
       .map((item) => item.aweme_info)
       .filter((item): item is DouyinAweme => Boolean(item));
+  }
+
+  private async searchByBrowser(keyword: string): Promise<ContentItem[]> {
+    if (!hasLocalBrowserProfile('douyin', this.sourceConfig.userId)) {
+      return [];
+    }
+
+    let browser;
+    try {
+      browser = await launchLocalBrowser('douyin', this.sourceConfig.userId);
+      const page = await browser.newPage();
+      const responsePromise = this.waitForBrowserSearchResponse(page, keyword);
+
+      await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForSelector('input', { timeout: 30000 });
+      await page.click('input');
+      await page.type('input', keyword, { delay: 50 });
+      await page.keyboard.press('Enter');
+
+      const response = await this.withTimeout(responsePromise, 30000, null);
+      if (!response) {
+        logger.warn(`Douyin browser search did not capture result response: ${keyword}`);
+        return [];
+      }
+
+      return this.extractAwemes(response)
+        .map((aweme) => this.convertSearchItemToContentItem(aweme, keyword))
+        .filter((item): item is ContentItem => Boolean(item))
+        .filter((item) => this.validateItem(item));
+    } catch (error) {
+      logger.warn(`Douyin browser search failed for "${keyword}": ${(error as Error).message}`);
+      return [];
+    } finally {
+      await browser?.close().catch(() => undefined);
+    }
+  }
+
+  private waitForBrowserSearchResponse(
+    page: Page,
+    keyword: string
+  ): Promise<DouyinSearchResponse | null> {
+    const encodedKeyword = encodeURIComponent(keyword);
+
+    return new Promise((resolve) => {
+      const handler = (response: Awaited<ReturnType<Page['waitForResponse']>>) => {
+        void this.handleBrowserSearchResponse(response, encodedKeyword, () => {
+          page.off('response', handler);
+        }, resolve);
+      };
+
+      page.on('response', handler);
+    });
+  }
+
+  private async handleBrowserSearchResponse(
+    response: Awaited<ReturnType<Page['waitForResponse']>>,
+    encodedKeyword: string,
+    removeListener: () => void,
+    resolve: (value: DouyinSearchResponse | null) => void
+  ): Promise<void> {
+    const url = response.url();
+    if (!url.includes('/aweme/v1/web/general/search/stream/') || !url.includes(encodedKeyword)) {
+      return;
+    }
+
+    removeListener();
+    const text = await response.text().catch(() => '');
+    resolve(this.parseBrowserSearchResponse(text));
+  }
+
+  private parseBrowserSearchResponse(text: string): DouyinSearchResponse | null {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(text.slice(start, end + 1)) as DouyinSearchResponse;
+    } catch {
+      return null;
+    }
   }
 
   private async fetchHotSearchList(): Promise<DouyinHotResponse> {

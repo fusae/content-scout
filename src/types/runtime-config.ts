@@ -12,6 +12,7 @@ export const sourceNames: SourceName[] = [
   'v2ex',
   'douyin',
   'xiaohongshu',
+  'weibo',
 ];
 
 export interface SourceRuntimeConfig {
@@ -22,7 +23,14 @@ export interface RedditSourceRuntimeConfig extends SourceRuntimeConfig {
   subreddits: string[];
 }
 
+export interface KeywordCookieSourceRuntimeConfig extends SourceRuntimeConfig {
+  userId?: string;
+  keywords: string[];
+  cookie: string;
+}
+
 export interface DouyinSourceRuntimeConfig extends SourceRuntimeConfig {
+  userId?: string;
   keywords: string[];
   cookie: string;
   tiktokDownloaderApiUrl: string;
@@ -30,6 +38,7 @@ export interface DouyinSourceRuntimeConfig extends SourceRuntimeConfig {
 }
 
 export interface XiaohongshuSourceRuntimeConfig extends SourceRuntimeConfig {
+  userId?: string;
   keywords: string[];
   cookie: string;
   adapter: 'redbook' | 'native';
@@ -41,12 +50,13 @@ export interface SourcesRuntimeConfig {
   x: SourceRuntimeConfig;
   hackernews: SourceRuntimeConfig;
   github: SourceRuntimeConfig;
-  zhihu: SourceRuntimeConfig;
+  zhihu: KeywordCookieSourceRuntimeConfig;
   producthunt: SourceRuntimeConfig;
   reddit: RedditSourceRuntimeConfig;
   v2ex: SourceRuntimeConfig;
   douyin: DouyinSourceRuntimeConfig;
   xiaohongshu: XiaohongshuSourceRuntimeConfig;
+  weibo: KeywordCookieSourceRuntimeConfig;
 }
 
 export interface UserRuntimeConfig {
@@ -54,6 +64,22 @@ export interface UserRuntimeConfig {
   accountHandle: string;
   profilePath: string;
   sources: SourcesRuntimeConfig;
+  ai: {
+    embedding: {
+      apiKey: string;
+      baseURL: string;
+      model: string;
+    };
+    deepseek: {
+      apiKey: string;
+      baseURL: string;
+    };
+    grokBridge: {
+      url: string;
+      token: string;
+      timeoutMs: number;
+    };
+  };
   lark: {
     appId: string;
     appSecret: string;

@@ -12,11 +12,19 @@ import {
   V2EXScraper,
   DouyinScraper,
   XiaohongshuScraper,
+  WeiboScraper,
   BaseScraper,
 } from '../scrapers/index.js';
 import { localRuntimeConfig } from '../config.js';
 import type { SourceName, UserRuntimeConfig } from '../types/runtime-config.js';
 import crypto from 'crypto';
+
+export interface AggregationProgressEvent {
+  source: string;
+  stats: ScraperStats;
+}
+
+export type AggregationProgressCallback = (event: AggregationProgressEvent) => void;
 
 /**
  * 内容聚合器 - 协调所有爬虫并管理内容存储
@@ -26,7 +34,11 @@ export class ContentAggregator {
   private scrapers: Map<string, BaseScraper>;
   private rateLimiter: RateLimiter;
 
-  constructor(db: DatabaseManager, runtimeConfig: UserRuntimeConfig = localRuntimeConfig) {
+  constructor(
+    db: DatabaseManager,
+    runtimeConfig: UserRuntimeConfig = localRuntimeConfig,
+    private onProgress?: AggregationProgressCallback
+  ) {
     this.db = db;
     this.rateLimiter = new RateLimiter({
       maxConcurrent: runtimeConfig.rateLimit.maxConcurrent,
@@ -38,12 +50,33 @@ export class ContentAggregator {
       sourceConfig.hackernews.enabled ? ['hackernews', new HackerNewsScraper(this.rateLimiter)] : null,
       sourceConfig.github.enabled ? ['github', new GitHubTrendingScraper(this.rateLimiter)] : null,
       sourceConfig.x.enabled ? ['x', new XScraper(this.rateLimiter)] : null,
-      sourceConfig.zhihu.enabled ? ['zhihu', new ZhihuScraper(this.rateLimiter)] : null,
+      sourceConfig.zhihu.enabled
+        ? ['zhihu', new ZhihuScraper(this.rateLimiter, {
+          ...sourceConfig.zhihu,
+          userId: runtimeConfig.userId,
+        })]
+        : null,
       sourceConfig.producthunt.enabled ? ['producthunt', new ProductHuntScraper(this.rateLimiter)] : null,
       sourceConfig.reddit.enabled ? ['reddit', new RedditScraper(this.rateLimiter, sourceConfig.reddit)] : null,
       sourceConfig.v2ex.enabled ? ['v2ex', new V2EXScraper(this.rateLimiter)] : null,
-      sourceConfig.douyin.enabled ? ['douyin', new DouyinScraper(this.rateLimiter, sourceConfig.douyin)] : null,
-      sourceConfig.xiaohongshu.enabled ? ['xiaohongshu', new XiaohongshuScraper(this.rateLimiter, sourceConfig.xiaohongshu)] : null,
+      sourceConfig.douyin.enabled
+        ? ['douyin', new DouyinScraper(this.rateLimiter, {
+          ...sourceConfig.douyin,
+          userId: runtimeConfig.userId,
+        })]
+        : null,
+      sourceConfig.xiaohongshu.enabled
+        ? ['xiaohongshu', new XiaohongshuScraper(this.rateLimiter, {
+          ...sourceConfig.xiaohongshu,
+          userId: runtimeConfig.userId,
+        })]
+        : null,
+      sourceConfig.weibo.enabled
+        ? ['weibo', new WeiboScraper(this.rateLimiter, {
+          ...sourceConfig.weibo,
+          userId: runtimeConfig.userId,
+        })]
+        : null,
     ];
 
     this.scrapers = new Map<string, BaseScraper>(
@@ -66,7 +99,9 @@ export class ContentAggregator {
 
     // 并发运行所有爬虫
     const promises = Array.from(this.scrapers.entries()).map(async ([source, scraper]) => {
-      return this.runScraper(source, scraper);
+      const statsForSource = await this.runScraper(source, scraper);
+      this.onProgress?.({ source, stats: statsForSource });
+      return statsForSource;
     });
 
     const results = await Promise.allSettled(promises);
@@ -161,11 +196,11 @@ export class ContentAggregator {
       }
 
       // 去重（与数据库中已有内容对比）
-      const dedupedItems = await this.deduplicateWithDatabase(items);
+      const dedupedItems = this.deduplicateWithDatabase(items);
       itemsDeduped = items.length - dedupedItems.length;
 
       // 保存到数据库
-      itemsSaved = await this.saveItems(dedupedItems);
+      itemsSaved = this.saveItems(dedupedItems);
 
       logger.info(
         `Scraper ${source} completed: ${itemsCollected} collected, ${itemsDeduped} duplicates, ${itemsSaved} saved`
@@ -188,19 +223,19 @@ export class ContentAggregator {
   /**
    * 与数据库中的内容去重
    */
-  private async deduplicateWithDatabase(items: ContentItem[]): Promise<ContentItem[]> {
+  private deduplicateWithDatabase(items: ContentItem[]): ContentItem[] {
     const uniqueItems: ContentItem[] = [];
 
     for (const item of items) {
       // 检查 URL 是否已存在
-      if (item.url && (await this.isUrlExists(item.url))) {
+      if (item.url && this.isUrlExists(item.url)) {
         logger.debug(`Duplicate URL found: ${item.url}`);
         continue;
       }
 
       // 检查内容哈希是否已存在
       const contentHash = this.generateContentHash(item);
-      if (await this.isContentHashExists(contentHash)) {
+      if (this.isContentHashExists(contentHash)) {
         logger.debug(`Duplicate content hash found for: ${item.title}`);
         continue;
       }
@@ -214,7 +249,7 @@ export class ContentAggregator {
   /**
    * 检查 URL 是否已存在
    */
-  private async isUrlExists(url: string): Promise<boolean> {
+  private isUrlExists(url: string): boolean {
     try {
       const existing = this.db.getContentByUrl(url);
       return !!existing;
@@ -227,7 +262,7 @@ export class ContentAggregator {
   /**
    * 检查内容哈希是否已存在
    */
-  private async isContentHashExists(hash: string): Promise<boolean> {
+  private isContentHashExists(hash: string): boolean {
     try {
       const existing = this.db.getContentByHash(hash);
       return !!existing;
@@ -248,7 +283,7 @@ export class ContentAggregator {
   /**
    * 保存内容到数据库
    */
-  private async saveItems(items: ContentItem[]): Promise<number> {
+  private saveItems(items: ContentItem[]): number {
     let savedCount = 0;
 
     for (const item of items) {
@@ -279,6 +314,7 @@ export class ContentAggregator {
    */
   async cleanupOldContent(daysOld: number = 7): Promise<number> {
     logger.info(`Cleaning up content older than ${daysOld} days...`);
+    await Promise.resolve();
 
     try {
       const deletedCount = this.db.deleteOldContent(daysOld);

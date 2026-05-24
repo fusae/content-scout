@@ -163,4 +163,21 @@ export abstract class BaseScraper {
     const delay = Math.floor(Math.random() * (max - min + 1)) + min;
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
+
+  protected async withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+    let timeout: NodeJS.Timeout | undefined;
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((resolve) => {
+          timeout = setTimeout(() => resolve(fallback), ms);
+        }),
+      ]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
 }

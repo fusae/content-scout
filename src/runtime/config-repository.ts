@@ -51,12 +51,22 @@ export class RuntimeConfigRepository {
     }
 
     this.saveCredential(config.userId, 'douyin_cookie', config.sources.douyin.cookie);
+    this.saveCredential(config.userId, 'zhihu_cookie', config.sources.zhihu.cookie);
     this.saveCredential(
       config.userId,
       'douyin_tiktokdownloader_token',
       config.sources.douyin.tiktokDownloaderToken
     );
     this.saveCredential(config.userId, 'xiaohongshu_cookie', config.sources.xiaohongshu.cookie);
+    this.saveCredential(config.userId, 'weibo_cookie', config.sources.weibo.cookie);
+    this.saveCredential(config.userId, 'embedding_api_key', config.ai.embedding.apiKey);
+    this.saveCredential(config.userId, 'embedding_base_url', config.ai.embedding.baseURL);
+    this.saveCredential(config.userId, 'embedding_model', config.ai.embedding.model);
+    this.saveCredential(config.userId, 'deepseek_api_key', config.ai.deepseek.apiKey);
+    this.saveCredential(config.userId, 'deepseek_base_url', config.ai.deepseek.baseURL);
+    this.saveCredential(config.userId, 'grok_bridge_url', config.ai.grokBridge.url);
+    this.saveCredential(config.userId, 'grok_bridge_token', config.ai.grokBridge.token);
+    this.saveCredential(config.userId, 'grok_bridge_timeout_ms', String(config.ai.grokBridge.timeoutMs || ''));
   }
 
   get(userId: string): UserRuntimeConfig | undefined {
@@ -84,6 +94,22 @@ export class RuntimeConfigRepository {
         baseId: lark?.base_id || '',
         defaultReceiverId: lark?.default_receiver_id || '',
       },
+      ai: {
+        embedding: {
+          apiKey: this.decryptCredential(credentials, 'embedding_api_key'),
+          baseURL: this.decryptCredential(credentials, 'embedding_base_url'),
+          model: this.decryptCredential(credentials, 'embedding_model'),
+        },
+        deepseek: {
+          apiKey: this.decryptCredential(credentials, 'deepseek_api_key'),
+          baseURL: this.decryptCredential(credentials, 'deepseek_base_url'),
+        },
+        grokBridge: {
+          url: this.decryptCredential(credentials, 'grok_bridge_url'),
+          token: this.decryptCredential(credentials, 'grok_bridge_token'),
+          timeoutMs: Number(this.decryptCredential(credentials, 'grok_bridge_timeout_ms') || 0),
+        },
+      },
       schedule: {
         cronSchedule: user.cron_schedule,
         timezone: user.timezone,
@@ -101,6 +127,10 @@ export class RuntimeConfigRepository {
         return {
           subreddits: config.sources.reddit.subreddits,
         };
+      case 'zhihu':
+        return {
+          keywords: config.sources.zhihu.keywords,
+        };
       case 'douyin':
         return {
           keywords: config.sources.douyin.keywords,
@@ -113,6 +143,10 @@ export class RuntimeConfigRepository {
           cookieSource: config.sources.xiaohongshu.cookieSource,
           chromeProfile: config.sources.xiaohongshu.chromeProfile,
         };
+      case 'weibo':
+        return {
+          keywords: config.sources.weibo.keywords,
+        };
       default:
         return {};
     }
@@ -123,8 +157,10 @@ export class RuntimeConfigRepository {
     credentials: Map<string, RuntimeCredentialRecord>
   ): SourcesRuntimeConfig {
     const reddit = this.readSourceRecord(records, 'reddit');
+    const zhihu = this.readSourceRecord(records, 'zhihu');
     const douyin = this.readSourceRecord(records, 'douyin');
     const xiaohongshu = this.readSourceRecord(records, 'xiaohongshu');
+    const weibo = this.readSourceRecord(records, 'weibo');
 
     return {
       x: {
@@ -138,6 +174,8 @@ export class RuntimeConfigRepository {
       },
       zhihu: {
         enabled: this.isEnabled(records, 'zhihu'),
+        keywords: this.stringArray(zhihu.keywords),
+        cookie: this.decryptCredential(credentials, 'zhihu_cookie'),
       },
       producthunt: {
         enabled: this.isEnabled(records, 'producthunt'),
@@ -163,6 +201,11 @@ export class RuntimeConfigRepository {
         adapter: xiaohongshu.adapter === 'native' ? 'native' : 'redbook',
         cookieSource: this.toCookieSource(xiaohongshu.cookieSource),
         chromeProfile: this.stringValue(xiaohongshu.chromeProfile),
+      },
+      weibo: {
+        enabled: this.isEnabled(records, 'weibo'),
+        keywords: this.stringArray(weibo.keywords),
+        cookie: this.decryptCredential(credentials, 'weibo_cookie'),
       },
     };
   }

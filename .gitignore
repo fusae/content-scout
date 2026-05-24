@@ -7,4 +7,6 @@ node_modules/
 dist/
 logs/
 data/*.db*
+data/browser-profiles/
+data/profiles/
 config/*.local.json

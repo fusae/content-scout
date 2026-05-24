@@ -3,8 +3,10 @@ import { ContentItem } from '../types/content.js';
 import { logger } from '../utils/logger.js';
 import { retry, retryStrategies } from '../utils/retry.js';
 import { config } from '../config.js';
+import { hasLocalBrowserProfile, launchLocalBrowser } from './local-browser.js';
 import type { RateLimiter } from '../utils/rate-limiter.js';
 import type { XiaohongshuSourceRuntimeConfig } from '../types/runtime-config.js';
+import type { Page } from 'puppeteer';
 
 type CookieSource = 'chrome' | 'safari' | 'firefox';
 type RedbookClient = {
@@ -68,6 +70,7 @@ export class XiaohongshuScraper extends BaseScraper {
   constructor(rateLimiter: RateLimiter, sourceConfig?: XiaohongshuSourceRuntimeConfig) {
     super(rateLimiter);
     this.sourceConfig = sourceConfig || {
+      userId: process.env.USER_ID || 'local',
       enabled: true,
       keywords: config.chineseSources.xiaohongshuKeywords,
       cookie: config.chineseSources.xiaohongshuCookie,
@@ -174,12 +177,88 @@ export class XiaohongshuScraper extends BaseScraper {
     const response = await this.fetchSearchApi(keyword);
     if (response.success === false || response.code === -101) {
       logger.warn(`Xiaohongshu keyword search requires login cookie/signature: ${keyword}`);
+      return this.searchByBrowser(keyword);
+    }
+
+    const apiNotes = (response.data?.items || [])
+      .map((item) => this.convertSearchItem(item))
+      .filter((item): item is XiaohongshuNote => Boolean(item));
+
+    if (apiNotes.length > 0) {
+      return apiNotes;
+    }
+
+    return this.searchByBrowser(keyword);
+  }
+
+  private async searchByBrowser(keyword: string): Promise<XiaohongshuNote[]> {
+    if (!hasLocalBrowserProfile('xiaohongshu', this.sourceConfig.userId)) {
       return [];
     }
 
-    return (response.data?.items || [])
-      .map((item) => this.convertSearchItem(item))
-      .filter((item): item is XiaohongshuNote => Boolean(item));
+    let browser;
+    try {
+      browser = await launchLocalBrowser('xiaohongshu', this.sourceConfig.userId);
+      const page = await browser.newPage();
+      const responsePromise = this.waitForBrowserSearchResponse(page);
+      await page.goto(
+        `${this.baseUrl}/search_result?keyword=${encodeURIComponent(keyword)}&source=web_search_result_notes`,
+        { waitUntil: 'domcontentloaded', timeout: 60000 }
+      );
+
+      const response = await this.withTimeout(responsePromise, 30000, null);
+      if (!response) {
+        const needsLogin = await page
+          .evaluate(() => /登录后查看搜索结果|手机号登录|扫码/.test(document.body.innerText || ''))
+          .catch(() => false);
+        if (needsLogin) {
+          logger.warn(`Xiaohongshu browser search needs login: ${keyword}`);
+        } else {
+          logger.warn(`Xiaohongshu browser search did not capture result response: ${keyword}`);
+        }
+        return [];
+      }
+
+      if (response.success === false || response.code === -101) {
+        logger.warn(`Xiaohongshu browser search rejected login state: ${keyword}`);
+        return [];
+      }
+
+      return (response.data?.items || [])
+        .map((item) => this.convertSearchItem(item))
+        .filter((item): item is XiaohongshuNote => Boolean(item));
+    } catch (error) {
+      logger.warn(`Xiaohongshu browser search failed for "${keyword}": ${(error as Error).message}`);
+      return [];
+    } finally {
+      await browser?.close().catch(() => undefined);
+    }
+  }
+
+  private waitForBrowserSearchResponse(page: Page): Promise<XiaohongshuSearchResponse | null> {
+    return new Promise((resolve) => {
+      const handler = (response: Awaited<ReturnType<Page['waitForResponse']>>) => {
+        void this.handleBrowserSearchResponse(response, () => {
+          page.off('response', handler);
+        }, resolve);
+      };
+
+      page.on('response', handler);
+    });
+  }
+
+  private async handleBrowserSearchResponse(
+    response: Awaited<ReturnType<Page['waitForResponse']>>,
+    removeListener: () => void,
+    resolve: (value: XiaohongshuSearchResponse | null) => void
+  ): Promise<void> {
+    if (!response.url().includes('/api/sns/web/v1/search/notes')) {
+      return;
+    }
+
+    removeListener();
+    const data = await (response.json() as Promise<unknown>).catch((): unknown => null);
+    resolve(data as XiaohongshuSearchResponse | null);
   }
 
   private async fetchSearchPage(keyword: string): Promise<string> {

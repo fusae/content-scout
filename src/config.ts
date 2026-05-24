@@ -84,12 +84,16 @@ export const config = {
   // 中文平台搜索配置：配置关键词后，抖音/小红书会从热榜模式切到搜索模式
   chineseSources: {
     keywords: parseList(process.env.CONTENT_SEARCH_KEYWORDS || ''),
+    zhihuKeywords: parseList(process.env.ZHIHU_SEARCH_KEYWORDS || process.env.CONTENT_SEARCH_KEYWORDS || ''),
     douyinKeywords: parseList(process.env.DOUYIN_SEARCH_KEYWORDS || process.env.CONTENT_SEARCH_KEYWORDS || ''),
     xiaohongshuKeywords: parseList(process.env.XIAOHONGSHU_SEARCH_KEYWORDS || process.env.CONTENT_SEARCH_KEYWORDS || ''),
+    weiboKeywords: parseList(process.env.WEIBO_SEARCH_KEYWORDS || process.env.CONTENT_SEARCH_KEYWORDS || ''),
+    zhihuCookie: process.env.ZHIHU_COOKIE || '',
     douyinCookie: process.env.DOUYIN_COOKIE || '',
     douyinTikTokDownloaderApiUrl: process.env.DOUYIN_TIKTOKDOWNLOADER_API_URL || '',
     douyinTikTokDownloaderToken: process.env.DOUYIN_TIKTOKDOWNLOADER_TOKEN || '',
     xiaohongshuCookie: process.env.XIAOHONGSHU_COOKIE || '',
+    weiboCookie: process.env.WEIBO_COOKIE || '',
     xiaohongshuAdapter: process.env.XIAOHONGSHU_ADAPTER || 'redbook',
     xiaohongshuCookieSource: process.env.XIAOHONGSHU_COOKIE_SOURCE || 'chrome',
     xiaohongshuChromeProfile: process.env.XIAOHONGSHU_CHROME_PROFILE || '',
@@ -141,6 +145,8 @@ export function createLocalRuntimeConfig(): UserRuntimeConfig {
       },
       zhihu: {
         enabled: isSourceEnabled('zhihu'),
+        keywords: config.chineseSources.zhihuKeywords,
+        cookie: config.chineseSources.zhihuCookie,
       },
       producthunt: {
         enabled: isSourceEnabled('producthunt'),
@@ -172,12 +178,33 @@ export function createLocalRuntimeConfig(): UserRuntimeConfig {
           : 'chrome',
         chromeProfile: config.chineseSources.xiaohongshuChromeProfile,
       },
+      weibo: {
+        enabled: isSourceEnabled('weibo'),
+        keywords: config.chineseSources.weiboKeywords,
+        cookie: config.chineseSources.weiboCookie,
+      },
     },
     lark: {
       appId: config.lark.appId,
       appSecret: config.lark.appSecret,
       baseId: config.lark.baseId,
       defaultReceiverId: config.lark.defaultReceiverId,
+    },
+    ai: {
+      embedding: {
+        apiKey: config.embedding.apiKey,
+        baseURL: config.embedding.baseURL,
+        model: config.embedding.model,
+      },
+      deepseek: {
+        apiKey: config.deepseek.apiKey,
+        baseURL: config.deepseek.baseURL,
+      },
+      grokBridge: {
+        url: config.grokBridge.url,
+        token: config.grokBridge.token,
+        timeoutMs: config.grokBridge.timeoutMs,
+      },
     },
     schedule: {
       cronSchedule: config.cronSchedule,
