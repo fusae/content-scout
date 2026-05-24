@@ -1,7 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
-import { URL } from 'url';
+import { URL, fileURLToPath } from 'url';
 import { config, ensureDirectories, localRuntimeConfig } from '../config.js';
 import { DatabaseManager } from '../db/index.js';
 import type { InitialProfileData, SampleTweet } from '../profile/types.js';
@@ -13,6 +13,9 @@ import { RuntimeWorker } from '../runtime/worker.js';
 import { sourceNames, UserRuntimeConfig } from '../types/runtime-config.js';
 import { logger } from '../utils/logger.js';
 import { CookieHelper, isCookiePlatform } from './cookie-helper.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 type JsonBody = Record<string, unknown>;
 type ProfileFormData = {
@@ -80,7 +83,22 @@ class AdminServer {
       }
 
       if (method === 'GET' && url.pathname === '/') {
+        if (this.shouldShowOnboarding(url.searchParams.get('userId') || localRuntimeConfig.userId)) {
+          this.redirect(res, this.onboardingLocation(url));
+          return;
+        }
+
         this.html(res, this.renderDashboard());
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/dashboard') {
+        this.html(res, this.renderDashboard());
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/onboarding') {
+        this.html(res, this.renderOnboarding());
         return;
       }
 
@@ -436,10 +454,10 @@ class AdminServer {
   }
 
   private defaultConfig(userId: string): UserRuntimeConfig {
-    return {
-      ...JSON.parse(JSON.stringify(localRuntimeConfig)) as UserRuntimeConfig,
-      userId,
-    };
+    const base = JSON.parse(JSON.stringify(localRuntimeConfig)) as UserRuntimeConfig;
+    return userId === localRuntimeConfig.userId
+      ? { ...base, userId }
+      : this.blankConfigFromBase(userId, base);
   }
 
   private withLocalAiFallback(userId: string, runtimeConfig: UserRuntimeConfig): UserRuntimeConfig {
@@ -464,7 +482,11 @@ class AdminServer {
   }
 
   private blankConfig(userId: string): UserRuntimeConfig {
-    const base = this.defaultConfig(userId);
+    const base = JSON.parse(JSON.stringify(localRuntimeConfig)) as UserRuntimeConfig;
+    return this.blankConfigFromBase(userId, base);
+  }
+
+  private blankConfigFromBase(userId: string, base: UserRuntimeConfig): UserRuntimeConfig {
     return {
       userId,
       accountHandle: userId,
@@ -542,6 +564,32 @@ class AdminServer {
       ...clone,
       credentialStatus: status,
     };
+  }
+
+  private shouldShowOnboarding(userId: string): boolean {
+    const runtimeConfig = this.repository.get(userId);
+    if (runtimeConfig) {
+      return !runtimeConfig.profilePath;
+    }
+
+    return userId === localRuntimeConfig.userId
+      ? !localRuntimeConfig.profilePath
+      : true;
+  }
+
+  private onboardingLocation(url: URL): string {
+    const params = new URLSearchParams();
+    const userId = url.searchParams.get('userId');
+    const token = url.searchParams.get('token');
+    if (userId) {
+      params.set('userId', userId);
+    }
+    if (token) {
+      params.set('token', token);
+    }
+
+    const query = params.toString();
+    return query ? `/onboarding?${query}` : '/onboarding';
   }
 
   private resolveProfilePath(runtimeConfig: UserRuntimeConfig): string {
@@ -633,9 +681,19 @@ class AdminServer {
     res.end(JSON.stringify(payload, null, 2));
   }
 
+  private redirect(res: ServerResponse, location: string): void {
+    res.writeHead(302, { location });
+    res.end();
+  }
+
   private html(res: ServerResponse, payload: string): void {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(payload);
+  }
+
+  private renderOnboarding(): string {
+    const path = resolve(__dirname, 'onboarding.html');
+    return readFileSync(path, 'utf8');
   }
 
   private renderDashboard(): string {

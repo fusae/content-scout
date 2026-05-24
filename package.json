@@ -6,7 +6,7 @@
   "main": "dist/desktop/main.js",
   "scripts": {
     "build": "tsc && npm run copy-files",
-    "copy-files": "mkdir -p dist/db && cp src/db/schema.sql dist/db/ && mkdir -p dist/data && cp -r src/data/* dist/data/",
+    "copy-files": "mkdir -p dist/db && cp src/db/schema.sql dist/db/ && mkdir -p dist/data && cp -r src/data/* dist/data/ && mkdir -p dist/web && cp src/web/*.html dist/web/",
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
     "desktop": "npm run build && electron dist/desktop/main.js",

@@ -22,8 +22,19 @@ export class MultiUserScheduler {
         continue;
       }
 
+      const cronSchedule = runtimeConfig.schedule.cronSchedule;
+      if (!cronSchedule || cronSchedule === 'manual') {
+        logger.info(`Scheduler disabled for manual user: ${runtimeConfig.userId}`);
+        continue;
+      }
+
+      if (!cron.validate(cronSchedule)) {
+        logger.warn(`Invalid cron schedule for ${runtimeConfig.userId}: ${cronSchedule}`);
+        continue;
+      }
+
       const task = cron.schedule(
-        runtimeConfig.schedule.cronSchedule,
+        cronSchedule,
         () => {
           this.queue.enqueue(runtimeConfig.userId, 'daily_run');
           logger.info(`Queued daily run: ${runtimeConfig.userId}`);

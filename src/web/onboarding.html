@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Content Scout - 首次设置</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { letter-spacing: 0; }
+    body {
+      min-height: 100vh;
+      background: #f6f7f2;
+      color: #111827;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
+    .choice-card {
+      border: 1px solid #d9ded4;
+      background: #ffffff;
+      transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .choice-card:hover { transform: translateY(-1px); border-color: #7c9b72; }
+    .choice-card.selected {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .14);
+    }
+    .source-card.enabled {
+      border-color: #15803d;
+      background: #f0fdf4;
+    }
+    .primary { background: #1f4f3a; color: white; }
+    .primary:hover { background: #183f2e; }
+    .secondary { background: white; color: #374151; border: 1px solid #d1d5db; }
+    .secondary:hover { background: #f9fafb; }
+    .muted-card { background: #fafaf7; border: 1px solid #e5e7eb; }
+  </style>
+</head>
+<body>
+  <main class="mx-auto max-w-6xl px-4 py-6 md:py-10">
+    <header class="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div>
+        <div class="text-sm font-semibold text-green-800">Content Scout</div>
+        <h1 class="mt-1 text-3xl font-bold text-gray-950">首次设置</h1>
+      </div>
+      <a href="/dashboard" class="text-sm font-medium text-gray-600 hover:text-gray-950">进入完整设置</a>
+    </header>
+
+    <section class="mb-6 rounded-lg border border-gray-200 bg-white p-3">
+      <div id="progress" class="grid grid-cols-5 gap-2 text-xs md:text-sm"></div>
+    </section>
+
+    <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm md:p-6">
+      <div id="step-1" class="step-panel active">
+        <p class="text-sm font-semibold text-green-800">Step 1</p>
+        <h2 class="mt-1 text-2xl font-bold">你是谁？</h2>
+        <p class="mt-2 text-gray-600">选一个最接近你的身份，我会帮你配好后面的一切。</p>
+        <div id="personaGrid" class="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4"></div>
+        <div id="personaPreview" class="mt-5 hidden rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900"></div>
+        <div class="mt-8 flex justify-end gap-3">
+          <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="skipPersona()">跳过</button>
+          <button id="nextFromPersona" class="primary rounded-md px-4 py-2 text-sm font-medium disabled:opacity-40" onclick="goStep(2)" disabled>下一步：选灵感来源</button>
+        </div>
+      </div>
+
+      <div id="step-2" class="step-panel">
+        <p class="text-sm font-semibold text-green-800">Step 2</p>
+        <h2 class="mt-1 text-2xl font-bold">从哪里找灵感？</h2>
+        <p class="mt-2 text-gray-600">打开你感兴趣的平台。标了“需登录”的平台，下一步可以连接。</p>
+        <div class="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <label class="text-sm font-medium text-gray-800" for="topicInput">搜你感兴趣的话题</label>
+          <div class="mt-2 flex flex-col gap-2 md:flex-row">
+            <input id="topicInput" class="min-h-11 flex-1 rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="例如：AI Agent, 创业, 出海">
+            <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="saveTopics()">保存话题</button>
+          </div>
+          <p id="topicSaveState" class="mt-2 text-xs text-gray-500">这些词会用于支持搜索的平台。</p>
+        </div>
+        <div id="sourceGrid" class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"></div>
+        <div class="mt-8 flex justify-between gap-3">
+          <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(1)">上一步</button>
+          <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(3)">下一步：连接平台</button>
+        </div>
+      </div>
+
+      <div id="step-3" class="step-panel">
+        <p class="text-sm font-semibold text-green-800">Step 3</p>
+        <h2 class="mt-1 text-2xl font-bold">连接平台</h2>
+        <p class="mt-2 text-gray-600">让系统能登录这些平台，帮你看内容。</p>
+        <div id="loginGrid" class="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2"></div>
+        <div class="mt-8 flex justify-between gap-3">
+          <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(2)">上一步</button>
+          <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(4)">下一步：接入 AI</button>
+        </div>
+      </div>
+
+      <div id="step-4" class="step-panel">
+        <p class="text-sm font-semibold text-green-800">Step 4</p>
+        <h2 class="mt-1 text-2xl font-bold">接入 AI</h2>
+        <p class="mt-2 text-gray-600">两个服务各干各的。都接上效果最好，只接一个也能跑。</p>
+        <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div id="embeddingCard" class="rounded-lg border border-gray-200 bg-white p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-bold">内容筛选</h3>
+                <p class="mt-2 text-sm text-gray-600">从每天抓到的内容里，挑出你最可能感兴趣的。</p>
+              </div>
+              <span id="embeddingStatus" class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">未接入</span>
+            </div>
+            <a class="mt-4 inline-flex text-sm font-medium text-green-800 hover:text-green-950" href="https://dashscope.console.aliyun.com" target="_blank" rel="noreferrer">去阿里云百炼申请免费额度 ↗</a>
+            <input id="embeddingKey" type="password" class="mt-4 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴访问密钥">
+            <button class="mt-3 primary rounded-md px-4 py-2 text-sm font-medium" onclick="saveAiKey('embedding')">保存内容筛选</button>
+          </div>
+
+          <div id="deepseekCard" class="rounded-lg border border-gray-200 bg-white p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-bold">内容创作</h3>
+                <p class="mt-2 text-sm text-gray-600">根据筛选出来的好内容，帮你写草稿。</p>
+              </div>
+              <span id="deepseekStatus" class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">未接入</span>
+            </div>
+            <a class="mt-4 inline-flex text-sm font-medium text-green-800 hover:text-green-950" href="https://platform.deepseek.com" target="_blank" rel="noreferrer">去 DeepSeek 申请 ↗</a>
+            <input id="deepseekKey" type="password" class="mt-4 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴访问密钥">
+            <button class="mt-3 primary rounded-md px-4 py-2 text-sm font-medium" onclick="saveAiKey('deepseek')">保存内容创作</button>
+          </div>
+        </div>
+        <div class="mt-8 flex justify-between gap-3">
+          <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(3)">上一步</button>
+          <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="nextFromAi()">下一步：推送设置</button>
+        </div>
+      </div>
+
+      <div id="step-5" class="step-panel">
+        <p class="text-sm font-semibold text-green-800">Step 5</p>
+        <h2 class="mt-1 text-2xl font-bold">推送到哪里？</h2>
+        <p class="mt-2 text-gray-600">每天跑完后，怎么给你结果？</p>
+        <div class="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <button id="delivery-lark" class="choice-card rounded-lg p-4 text-left" onclick="selectDelivery('lark')">
+            <div class="text-2xl">🐦</div>
+            <h3 class="mt-2 font-bold">飞书消息</h3>
+            <p class="mt-1 text-sm text-gray-600">每天推到飞书，直接在手机上审。</p>
+          </button>
+          <button id="delivery-app" class="choice-card selected rounded-lg p-4 text-left" onclick="selectDelivery('app')">
+            <div class="text-2xl">🖥️</div>
+            <h3 class="mt-2 font-bold">就在应用里看</h3>
+            <p class="mt-1 text-sm text-gray-600">不接推送，打开这个应用看。</p>
+          </button>
+          <button class="choice-card rounded-lg p-4 text-left opacity-60" disabled>
+            <div class="text-2xl">📧</div>
+            <h3 class="mt-2 font-bold">邮件</h3>
+            <p class="mt-1 text-sm text-gray-600">每天发一封邮件汇总，即将支持。</p>
+          </button>
+        </div>
+        <div id="larkForm" class="mt-5 hidden rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <label class="text-sm font-medium">App ID
+              <input id="larkAppId" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none">
+            </label>
+            <label class="text-sm font-medium">App Secret
+              <input id="larkAppSecret" type="password" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none">
+            </label>
+            <label class="text-sm font-medium">接收人
+              <input id="larkReceiver" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="open_id 或 chat_id">
+            </label>
+          </div>
+          <details class="mt-3 text-sm text-gray-600">
+            <summary class="cursor-pointer font-medium text-gray-800">怎么找</summary>
+            <p class="mt-2">App ID 和 Secret 在飞书开放平台应用凭证里；接收人可以填单聊 open_id 或群 chat_id。</p>
+          </details>
+        </div>
+        <div class="mt-8 flex justify-between gap-3">
+          <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(4)">上一步</button>
+          <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="finishSetup()">完成设置</button>
+        </div>
+      </div>
+
+      <div id="step-6" class="step-panel">
+        <p class="text-sm font-semibold text-green-800">完成</p>
+        <h2 class="mt-1 text-2xl font-bold">你的灵感引擎已就绪！</h2>
+        <div id="finishSummary" class="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-5 text-sm text-gray-800"></div>
+        <div class="mt-6 flex flex-col gap-3 md:flex-row">
+          <select id="scheduleSelect" class="min-h-11 rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" onchange="saveSchedule()">
+            <option value="0 9 * * *">每天早上 9:00 自动运行</option>
+            <option value="0 12 * * *">每天中午 12:00 自动运行</option>
+            <option value="0 18 * * *">每天下午 18:00 自动运行</option>
+            <option value="manual">只手动运行</option>
+          </select>
+          <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="runNow()">立即运行</button>
+          <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="location.href='/dashboard'">进入完整设置</button>
+        </div>
+        <p id="finishState" class="mt-3 text-sm text-gray-600"></p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="fixed bottom-5 left-1/2 hidden -translate-x-1/2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 shadow-lg"></div>
+
+  <script>
+    const userId = new URLSearchParams(location.search).get('userId') || 'local';
+    const tokenFromUrl = new URLSearchParams(location.search).get('token');
+    if (tokenFromUrl) {
+      localStorage.setItem('contentScoutAdminToken', tokenFromUrl);
+      history.replaceState(null, '', location.pathname);
+    }
+    const adminToken = localStorage.getItem('contentScoutAdminToken') || '';
+    let currentConfig = null;
+    let currentStep = 1;
+    let selectedPersona = '';
+    let selectedDelivery = 'app';
+    let skippedLogins = new Set();
+
+    const steps = ['你是谁', '灵感来源', '连接平台', '接入 AI', '推送设置'];
+    const authPlatforms = ['zhihu', 'weibo', 'douyin', 'xiaohongshu'];
+    const searchablePlatforms = ['zhihu', 'weibo', 'douyin', 'xiaohongshu'];
+    const sourceDefaults = {
+      x: { enabled: false },
+      hackernews: { enabled: false },
+      github: { enabled: false },
+      zhihu: { enabled: false, keywords: [], cookie: '' },
+      producthunt: { enabled: false },
+      reddit: { enabled: false, subreddits: ['technology'] },
+      v2ex: { enabled: false },
+      douyin: { enabled: false, keywords: [], cookie: '', tiktokDownloaderApiUrl: '', tiktokDownloaderToken: '' },
+      xiaohongshu: { enabled: false, keywords: [], cookie: '', adapter: 'redbook', cookieSource: 'chrome', chromeProfile: '' },
+      weibo: { enabled: false, keywords: [], cookie: '' },
+    };
+    const platformInfo = {
+      hackernews: { name: 'Hacker News', icon: 'HN', tag: '免费' },
+      github: { name: 'GitHub Trending', icon: 'GH', tag: '免费' },
+      v2ex: { name: 'V2EX', icon: 'V2', tag: '免费' },
+      reddit: { name: 'Reddit', icon: 'RD', tag: '免费' },
+      zhihu: { name: '知乎', icon: '知', tag: '需登录' },
+      weibo: { name: '微博', icon: '微', tag: '需登录' },
+      douyin: { name: '抖音', icon: '抖', tag: '需登录' },
+      xiaohongshu: { name: '小红书', icon: '小', tag: '需登录' },
+    };
+    const visibleSources = ['hackernews', 'github', 'v2ex', 'reddit', 'zhihu', 'weibo', 'douyin', 'xiaohongshu'];
+    const personas = {
+      social: {
+        icon: '💬',
+        title: '社交媒体创作者',
+        tone: '轻松口语化',
+        sources: ['weibo', 'douyin', 'xiaohongshu', 'zhihu'],
+        draft: '短帖 + 话题标签',
+        profile: {
+          bio: '关注中文互联网、AI 工具和创作者经济的社交媒体创作者。',
+          topics: ['AI 工具', '社交媒体', '创作者经济', '热点观察'],
+          interests: ['AI Agent', '内容增长', '中文互联网', '产品趋势'],
+          style: '轻松口语化，先给判断，再补充理由',
+          audience: '关注 AI、内容创作和互联网趋势的创作者与产品人',
+          samplePosts: ['这个变化挺值得关注：它不是多了一个功能，而是把原来很重的工作流压缩成了一个日常动作。']
+        }
+      },
+      writer: {
+        icon: '✍️',
+        title: '深度写作者',
+        tone: '专业深度',
+        sources: ['hackernews', 'github', 'reddit', 'v2ex', 'zhihu'],
+        draft: '选题大纲 + 摘要',
+        profile: {
+          bio: '长期写技术、产品和行业分析的深度写作者。',
+          topics: ['AI', '软件工程', '产品策略', '技术趋势'],
+          interests: ['开源项目', '开发者工具', 'AI 应用', '商业模式'],
+          style: '专业、克制、有分析框架',
+          audience: '技术管理者、开发者、产品经理和创业者',
+          samplePosts: ['真正值得写的不是工具本身，而是它改变了哪一段协作关系，以及这段关系为什么过去很难被软件化。']
+        }
+      },
+      video: {
+        icon: '🎥',
+        title: '视频创作者',
+        tone: '画面感强',
+        sources: ['douyin', 'xiaohongshu', 'weibo', 'reddit'],
+        draft: '脚本框架 + 分镜提示',
+        profile: {
+          bio: '面向短视频平台选题和脚本创作的内容创作者。',
+          topics: ['AI 应用', '短视频', '职场效率', '消费科技'],
+          interests: ['热门话题', '用户故事', '工具测评', '平台趋势'],
+          style: '画面感强，节奏快，适合转成视频脚本',
+          audience: '喜欢用短视频理解科技和效率工具的普通用户',
+          samplePosts: ['开场不用讲概念，直接给一个场景：以前三个人做半天，现在一个人十分钟搞定。冲突就出来了。']
+        }
+      },
+      all: {
+        icon: '🎯',
+        title: '我不确定 / 都要',
+        tone: '通用',
+        sources: ['hackernews', 'github', 'v2ex', 'reddit', 'zhihu', 'weibo', 'douyin', 'xiaohongshu'],
+        draft: '标准三种长度',
+        profile: {
+          bio: '关注 AI、科技、产品和互联网趋势的内容创作者。',
+          topics: ['AI', '科技趋势', '产品', '互联网'],
+          interests: ['AI Agent', '开源项目', '内容创作', '平台热点'],
+          style: '清晰、自然、有观点',
+          audience: '关注科技和效率提升的知识工作者',
+          samplePosts: ['这类产品最有意思的地方不是它能做什么，而是它把用户原来不愿意做的步骤消掉了。']
+        }
+      }
+    };
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 2200);
+    }
+
+    async function request(path, options = {}) {
+      const headers = { 'content-type': 'application/json' };
+      if (adminToken) headers.authorization = `Bearer ${adminToken}`;
+      const response = await fetch(path, { headers, ...options });
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(data.error || `请求失败：${response.status}`);
+      return data;
+    }
+
+    function ensureConfigShape(config) {
+      const mergedSources = JSON.parse(JSON.stringify(sourceDefaults));
+      Object.entries(config.sources || {}).forEach(([key, value]) => {
+        mergedSources[key] = { ...mergedSources[key], ...value };
+      });
+      currentConfig = {
+        userId,
+        accountHandle: config.accountHandle || userId,
+        profilePath: config.profilePath || '',
+        sources: mergedSources,
+        ai: {
+          embedding: {
+            apiKey: '',
+            baseURL: config.ai?.embedding?.baseURL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+            model: config.ai?.embedding?.model || 'text-embedding-v4',
+          },
+          deepseek: {
+            apiKey: '',
+            baseURL: config.ai?.deepseek?.baseURL || 'https://api.deepseek.com',
+          }
+        },
+        lark: {
+          appId: config.lark?.appId || '',
+          appSecret: '',
+          baseId: config.lark?.baseId || '',
+          defaultReceiverId: config.lark?.defaultReceiverId || '',
+        },
+        schedule: {
+          cronSchedule: config.schedule?.cronSchedule || '0 9 * * *',
+          timezone: config.schedule?.timezone || 'Asia/Shanghai',
+        },
+        rateLimit: config.rateLimit || { maxConcurrent: 3, requestDelayMs: 1000 },
+        credentialStatus: config.credentialStatus || {},
+      };
+    }
+
+    function configPayload() {
+      return {
+        userId,
+        accountHandle: currentConfig.accountHandle || userId,
+        profilePath: currentConfig.profilePath || '',
+        sources: currentConfig.sources,
+        ai: currentConfig.ai,
+        lark: currentConfig.lark,
+        schedule: currentConfig.schedule,
+        rateLimit: currentConfig.rateLimit,
+      };
+    }
+
+    async function saveConfig(message = '已保存') {
+      const saved = await request(`/api/users/${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(configPayload())
+      });
+      ensureConfigShape(saved);
+      renderAll();
+      if (message) showToast(message);
+    }
+
+    async function saveProfile(profile) {
+      const saved = await request(`/api/users/${encodeURIComponent(userId)}/profile`, {
+        method: 'PUT',
+        body: JSON.stringify(profile)
+      });
+      currentConfig.profilePath = saved.profilePath || currentConfig.profilePath;
+    }
+
+    function renderProgress() {
+      document.getElementById('progress').innerHTML = steps.map((label, index) => {
+        const step = index + 1;
+        const active = step === currentStep;
+        const done = step < currentStep || currentStep === 6;
+        return `
+          <div class="rounded-md px-3 py-2 ${active ? 'bg-green-900 text-white' : done ? 'bg-green-50 text-green-900' : 'bg-gray-50 text-gray-500'}">
+            <div class="font-semibold">Step ${step}</div>
+            <div class="truncate">${label}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderPersonaGrid() {
+      document.getElementById('personaGrid').innerHTML = Object.entries(personas).map(([key, item]) => `
+        <button class="choice-card ${selectedPersona === key ? 'selected' : ''} rounded-lg p-4 text-left" onclick="selectPersona('${key}')">
+          <div class="text-3xl">${item.icon}</div>
+          <h3 class="mt-3 text-lg font-bold">${item.title}</h3>
+          <p class="mt-2 text-sm text-gray-600">语气：${item.tone}</p>
+          <p class="mt-1 text-sm text-gray-600">草稿：${item.draft}</p>
+        </button>
+      `).join('');
+    }
+
+    function renderSourceGrid() {
+      const keywords = currentConfig.sources.zhihu.keywords || [];
+      document.getElementById('topicInput').value = keywords.join(', ');
+      document.getElementById('sourceGrid').innerHTML = visibleSources.map((id) => {
+        const platform = platformInfo[id];
+        const enabled = Boolean(currentConfig.sources[id]?.enabled);
+        return `
+          <button class="source-card ${enabled ? 'enabled' : ''} rounded-lg p-4 text-left" onclick="toggleSource('${id}')">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-sm font-bold text-gray-500">${platform.icon}</div>
+                <h3 class="mt-2 font-bold">${platform.name}</h3>
+                <p class="mt-1 text-sm text-gray-600">${platform.tag}</p>
+              </div>
+              <span class="rounded-full px-3 py-1 text-xs font-semibold ${enabled ? 'bg-green-700 text-white' : 'bg-gray-100 text-gray-600'}">${enabled ? '开' : '关'}</span>
+            </div>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function renderLoginGrid() {
+      const selected = authPlatforms.filter(id => currentConfig.sources[id]?.enabled);
+      const grid = document.getElementById('loginGrid');
+      if (!selected.length) {
+        grid.innerHTML = '<div class="muted-card rounded-lg p-5 text-gray-600">你没有打开需要登录的平台，这一步可以跳过。</div>';
+        return;
+      }
+
+      grid.innerHTML = selected.map((id) => {
+        const platform = platformInfo[id];
+        const connected = Boolean(currentConfig.credentialStatus?.[`${id}Cookie`]);
+        const skipped = skippedLogins.has(id);
+        return `
+          <div class="rounded-lg border ${connected ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'} p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h3 class="text-lg font-bold">🔐 ${platform.name}</h3>
+                <p class="mt-2 text-sm text-gray-600">需要你的登录凭证才能搜索。</p>
+              </div>
+              <span class="rounded-full px-3 py-1 text-xs font-semibold ${connected ? 'bg-green-700 text-white' : 'bg-gray-100 text-gray-600'}">${connected ? '已连接' : skipped ? '以后再说' : '未连接'}</span>
+            </div>
+            <div class="mt-5 flex flex-wrap gap-2">
+              <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="launchLogin('${id}')">在浏览器中登录${platform.name}</button>
+              <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="skipLogin('${id}')">以后再说</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderAiStatus() {
+      const embeddingOk = Boolean(currentConfig.credentialStatus?.embeddingApiKey);
+      const deepseekOk = Boolean(currentConfig.credentialStatus?.deepseekApiKey);
+      setStatus('embeddingStatus', embeddingOk);
+      setStatus('deepseekStatus', deepseekOk);
+    }
+
+    function setStatus(id, ok) {
+      const el = document.getElementById(id);
+      el.textContent = ok ? '已接入' : '未接入';
+      el.className = `rounded-full px-3 py-1 text-xs font-medium ${ok ? 'bg-green-700 text-white' : 'bg-gray-100 text-gray-600'}`;
+    }
+
+    function renderFinishSummary() {
+      const enabled = visibleSources.filter(id => currentConfig.sources[id]?.enabled);
+      const required = enabled.filter(id => authPlatforms.includes(id));
+      const connected = required.filter(id => currentConfig.credentialStatus?.[`${id}Cookie`]);
+      const pending = required.filter(id => !currentConfig.credentialStatus?.[`${id}Cookie`]);
+      const aiFilter = currentConfig.credentialStatus?.embeddingApiKey ? '内容筛选 已接入' : '内容筛选 跳过';
+      const aiDraft = currentConfig.credentialStatus?.deepseekApiKey ? '内容创作 已接入' : '内容创作 跳过';
+      const push = selectedDelivery === 'lark' && currentConfig.lark.appId && currentConfig.lark.defaultReceiverId
+        ? '飞书'
+        : '应用内查看';
+      document.getElementById('finishSummary').innerHTML = `
+        <div class="space-y-2">
+          <div><span class="font-semibold">身份：</span>${selectedPersona ? personas[selectedPersona].title : '通用'}</div>
+          <div><span class="font-semibold">来源：</span>${enabled.map(id => platformInfo[id].name).join('、') || '未选择'}</div>
+          <div><span class="font-semibold">登录：</span>${connected.length}/${required.length} 已连接${pending.length ? `（${pending.map(id => platformInfo[id].name).join('、')}待登录）` : ''}</div>
+          <div><span class="font-semibold">AI：</span>${aiFilter} | ${aiDraft}</div>
+          <div><span class="font-semibold">推送：</span>${push}</div>
+        </div>
+      `;
+      document.getElementById('scheduleSelect').value = currentConfig.schedule.cronSchedule || '0 9 * * *';
+    }
+
+    function renderAll() {
+      renderProgress();
+      renderPersonaGrid();
+      renderSourceGrid();
+      renderLoginGrid();
+      renderAiStatus();
+      if (currentStep === 6) renderFinishSummary();
+    }
+
+    async function selectPersona(key) {
+      selectedPersona = key;
+      const persona = personas[key];
+      Object.keys(currentConfig.sources).forEach(source => {
+        currentConfig.sources[source].enabled = persona.sources.includes(source);
+      });
+      currentConfig.sources.x.enabled = false;
+      currentConfig.sources.producthunt.enabled = false;
+      await saveProfile(persona.profile);
+      await saveConfig('');
+      const preview = document.getElementById('personaPreview');
+      preview.classList.remove('hidden');
+      preview.textContent = `你将获得：每天从 ${persona.sources.length} 个平台搜集灵感，生成 3 种长度的草稿，推送到你选择的地方。`;
+      document.getElementById('nextFromPersona').disabled = false;
+      showToast('身份已保存');
+    }
+
+    async function skipPersona() {
+      await selectPersona('all');
+      goStep(2);
+    }
+
+    async function toggleSource(id) {
+      currentConfig.sources[id].enabled = !currentConfig.sources[id].enabled;
+      await saveConfig('');
+      showToast(`${platformInfo[id].name}已${currentConfig.sources[id].enabled ? '打开' : '关闭'}`);
+    }
+
+    async function saveTopics() {
+      const keywords = document.getElementById('topicInput').value
+        .split(/[,，\n]/)
+        .map(item => item.trim())
+        .filter(Boolean);
+      searchablePlatforms.forEach(id => {
+        currentConfig.sources[id].keywords = keywords;
+      });
+      await saveConfig('');
+      document.getElementById('topicSaveState').textContent = keywords.length
+        ? `已保存 ${keywords.length} 个话题。`
+        : '未设置话题。';
+      showToast('话题已保存');
+    }
+
+    async function launchLogin(platform) {
+      showToast(`正在打开${platformInfo[platform].name}登录窗口`);
+      const saved = await request(`/api/users/${encodeURIComponent(userId)}/login/${platform}`, { method: 'POST' });
+      ensureConfigShape(saved);
+      skippedLogins.delete(platform);
+      renderAll();
+      showToast(`${platformInfo[platform].name}已连接`);
+    }
+
+    function skipLogin(platform) {
+      skippedLogins.add(platform);
+      renderLoginGrid();
+    }
+
+    async function saveAiKey(type) {
+      if (type === 'embedding') {
+        const key = document.getElementById('embeddingKey').value.trim();
+        if (!key) return showToast('先粘贴内容筛选密钥');
+        currentConfig.ai.embedding.apiKey = key;
+      } else {
+        const key = document.getElementById('deepseekKey').value.trim();
+        if (!key) return showToast('先粘贴内容创作密钥');
+        currentConfig.ai.deepseek.apiKey = key;
+      }
+      await saveConfig('');
+      document.getElementById(type === 'embedding' ? 'embeddingKey' : 'deepseekKey').value = '';
+      showToast(type === 'embedding' ? '内容筛选已接入' : '内容创作已接入');
+    }
+
+    function nextFromAi() {
+      const hasAi = currentConfig.credentialStatus?.embeddingApiKey || currentConfig.credentialStatus?.deepseekApiKey;
+      if (!hasAi && !confirm('不接 AI 的话，只能帮你抓内容，没法筛选和写草稿。确定先跳过？')) {
+        return;
+      }
+      goStep(5);
+    }
+
+    function selectDelivery(type) {
+      selectedDelivery = type;
+      document.getElementById('delivery-lark').classList.toggle('selected', type === 'lark');
+      document.getElementById('delivery-app').classList.toggle('selected', type === 'app');
+      document.getElementById('larkForm').classList.toggle('hidden', type !== 'lark');
+    }
+
+    async function finishSetup() {
+      if (selectedDelivery === 'lark') {
+        currentConfig.lark.appId = document.getElementById('larkAppId').value.trim() || currentConfig.lark.appId;
+        currentConfig.lark.appSecret = document.getElementById('larkAppSecret').value.trim();
+        currentConfig.lark.defaultReceiverId = document.getElementById('larkReceiver').value.trim() || currentConfig.lark.defaultReceiverId;
+        if (!currentConfig.lark.appId || !currentConfig.lark.appSecret || !currentConfig.lark.defaultReceiverId) {
+          showToast('飞书没填完，先存在应用里看');
+          selectedDelivery = 'app';
+          currentConfig.lark.appId = '';
+          currentConfig.lark.appSecret = '';
+          currentConfig.lark.defaultReceiverId = '';
+        }
+      } else {
+        currentConfig.lark.appId = '';
+        currentConfig.lark.appSecret = '';
+        currentConfig.lark.defaultReceiverId = '';
+      }
+      await saveConfig('');
+      goStep(6);
+    }
+
+    async function saveSchedule() {
+      currentConfig.schedule.cronSchedule = document.getElementById('scheduleSelect').value;
+      await saveConfig('');
+      document.getElementById('finishState').textContent = '运行时间已保存。';
+    }
+
+    async function runNow() {
+      await request(`/api/users/${encodeURIComponent(userId)}/run`, { method: 'POST' });
+      document.getElementById('finishState').textContent = '已开始运行，可以到运行日志看实时进度。';
+    }
+
+    function goStep(step) {
+      if (step === 3) {
+        const selected = authPlatforms.filter(id => currentConfig.sources[id]?.enabled);
+        if (!selected.length) {
+          currentStep = 4;
+        } else {
+          currentStep = 3;
+        }
+      } else {
+        currentStep = step;
+      }
+      document.querySelectorAll('.step-panel').forEach(panel => panel.classList.remove('active'));
+      document.getElementById(`step-${currentStep}`).classList.add('active');
+      renderAll();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function init() {
+      const config = await request(`/api/users/${encodeURIComponent(userId)}`);
+      ensureConfigShape(config);
+      document.getElementById('larkAppId').value = currentConfig.lark.appId || '';
+      document.getElementById('larkReceiver').value = currentConfig.lark.defaultReceiverId || '';
+      renderAll();
+    }
+
+    init().catch(error => {
+      showToast(error.message);
+    });
+  </script>
+</body>
+</html>
