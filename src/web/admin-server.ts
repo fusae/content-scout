@@ -1,7 +1,10 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { dirname, resolve } from 'path';
 import { URL } from 'url';
 import { config, ensureDirectories, localRuntimeConfig } from '../config.js';
 import { DatabaseManager } from '../db/index.js';
+import type { InitialProfileData, SampleTweet } from '../profile/types.js';
 import { RuntimeConfigRepository } from '../runtime/config-repository.js';
 import { RuntimeJobQueue } from '../runtime/job-queue.js';
 import { MultiUserScheduler } from '../runtime/multi-user-scheduler.js';
@@ -9,12 +12,23 @@ import { RuntimeTaskRunner } from '../runtime/task-runner.js';
 import { RuntimeWorker } from '../runtime/worker.js';
 import { sourceNames, UserRuntimeConfig } from '../types/runtime-config.js';
 import { logger } from '../utils/logger.js';
+import { CookieHelper, isCookiePlatform } from './cookie-helper.js';
 
 type JsonBody = Record<string, unknown>;
+type ProfileFormData = {
+  bio?: unknown;
+  topics?: unknown;
+  interests?: unknown;
+  style?: unknown;
+  audience?: unknown;
+  samplePosts?: unknown;
+};
 
 class AdminServer {
   private scheduler: MultiUserScheduler;
   private worker: RuntimeWorker;
+  private cookieHelper: CookieHelper;
+  private adminToken = process.env.ADMIN_TOKEN || '';
 
   constructor(
     private db: DatabaseManager,
@@ -24,9 +38,14 @@ class AdminServer {
     const runner = new RuntimeTaskRunner(db);
     this.scheduler = new MultiUserScheduler(db, repository, queue);
     this.worker = new RuntimeWorker(queue, repository, runner);
+    this.cookieHelper = new CookieHelper();
   }
 
-  start(port: number): void {
+  start(port: number, host: string): void {
+    if (!this.isLoopbackHost(host) && !this.adminToken) {
+      throw new Error('ADMIN_TOKEN is required when ADMIN_HOST is not a loopback address');
+    }
+
     this.scheduler.reload();
     this.worker.start();
 
@@ -34,8 +53,8 @@ class AdminServer {
       void this.handle(req, res);
     });
 
-    server.listen(port, () => {
-      logger.info(`Admin server listening on http://127.0.0.1:${port}`);
+    server.listen(port, host, () => {
+      logger.info(`Admin server listening on http://${host}:${port}`);
     });
 
     const shutdown = (): void => {
@@ -55,6 +74,11 @@ class AdminServer {
     const method = req.method || 'GET';
 
     try {
+      if (!this.isAuthorized(req, url)) {
+        this.unauthorized(res);
+        return;
+      }
+
       if (method === 'GET' && url.pathname === '/') {
         this.html(res, this.renderDashboard());
         return;
@@ -71,7 +95,17 @@ class AdminServer {
         return;
       }
 
-      if (userMatch && (method === 'POST' || method === 'PUT')) {
+      if (userMatch && method === 'POST') {
+        const body = await this.readJson(req);
+        const saved = body.mode === 'create'
+          ? this.createUser(userMatch[1])
+          : this.saveUser(userMatch[1], body);
+        this.scheduler.reload();
+        this.json(res, saved);
+        return;
+      }
+
+      if (userMatch && method === 'PUT') {
         const body = await this.readJson(req);
         const saved = this.saveUser(userMatch[1], body);
         this.scheduler.reload();
@@ -79,17 +113,44 @@ class AdminServer {
         return;
       }
 
+      if (userMatch && method === 'DELETE') {
+        this.deleteUser(userMatch[1]);
+        this.scheduler.reload();
+        this.json(res, { ok: true });
+        return;
+      }
+
       const credentialMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/credentials\/([^/]+)$/);
       if (credentialMatch && method === 'POST') {
         const body = await this.readJson(req);
         const saved = this.saveCredential(credentialMatch[1], credentialMatch[2], body);
-        this.json(res, saved);
+        this.json(res, this.publicConfig(saved));
         return;
       }
 
       if (credentialMatch && method === 'DELETE') {
         this.db.deleteRuntimeCredential(credentialMatch[1], `${credentialMatch[2]}_cookie`);
         this.json(res, { ok: true });
+        return;
+      }
+
+      const loginMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/login\/([^/]+)$/);
+      if (loginMatch && method === 'POST') {
+        const userId = loginMatch[1];
+        const platform = loginMatch[2];
+
+        if (!isCookiePlatform(platform)) {
+          this.json(res, { error: `Unsupported local login platform: ${platform}` }, 400);
+          return;
+        }
+
+        try {
+          const cookies = await this.cookieHelper.launchLoginWindow(platform, { userId });
+          const saved = this.saveCredential(userId, platform, { value: cookies });
+          this.json(res, this.publicConfig(saved));
+        } catch (error) {
+          this.json(res, { error: (error as Error).message }, 500);
+        }
         return;
       }
 
@@ -104,6 +165,18 @@ class AdminServer {
       if (testPushMatch && method === 'POST') {
         const jobId = this.queue.enqueue(testPushMatch[1], 'test_push');
         this.json(res, { ok: true, jobId });
+        return;
+      }
+
+      const profileMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/profile$/);
+      if (profileMatch && method === 'PUT') {
+        const body = await this.readJson(req);
+        this.json(res, this.saveProfile(profileMatch[1], body));
+        return;
+      }
+
+      if (profileMatch && method === 'GET') {
+        this.json(res, this.getProfile(profileMatch[1]));
         return;
       }
 
@@ -144,26 +217,44 @@ class AdminServer {
         accountHandle: user.account_handle,
         schedule: runtimeConfig?.schedule,
         enabledSources: runtimeConfig
-          ? sourceNames.filter((source) => runtimeConfig.sources[source].enabled)
+          ? this.dashboardSources().filter((source) => runtimeConfig.sources[source].enabled)
           : [],
         connections: this.connectionStatus(user.user_id),
       };
     });
   }
 
-  private getUser(userId: string): UserRuntimeConfig {
+  private getRuntimeConfig(userId: string): UserRuntimeConfig {
     const runtimeConfig = this.repository.get(userId);
     if (runtimeConfig) {
-      return runtimeConfig;
+      return this.withLocalAiFallback(userId, runtimeConfig);
     }
 
     return this.defaultConfig(userId);
   }
 
-  private saveUser(userId: string, body: JsonBody): UserRuntimeConfig {
+  private getUser(userId: string): unknown {
+    return this.publicConfig(this.getRuntimeConfig(userId));
+  }
+
+  private saveUser(userId: string, body: JsonBody): unknown {
     const runtimeConfig = this.normalizeConfig(userId, body);
     this.repository.save(runtimeConfig);
-    return runtimeConfig;
+    return this.publicConfig(runtimeConfig);
+  }
+
+  private createUser(userId: string): unknown {
+    const runtimeConfig = this.blankConfig(userId);
+    this.repository.save(runtimeConfig);
+    return this.publicConfig(runtimeConfig);
+  }
+
+  private deleteUser(userId: string): void {
+    this.db.deleteRuntimeUser(userId);
+    const profilePath = resolve('./data/profiles', `${this.safeFileName(userId)}.json`);
+    if (existsSync(profilePath)) {
+      unlinkSync(profilePath);
+    }
   }
 
   private saveCredential(userId: string, platform: string, body: JsonBody): UserRuntimeConfig {
@@ -172,13 +263,19 @@ class AdminServer {
       throw new Error('Credential value is required');
     }
 
-    const runtimeConfig = this.repository.get(userId) || this.defaultConfig(userId);
-    if (platform === 'douyin') {
+    const runtimeConfig = this.getRuntimeConfig(userId);
+    if (platform === 'zhihu') {
+      runtimeConfig.sources.zhihu.cookie = value;
+      runtimeConfig.sources.zhihu.enabled = true;
+    } else if (platform === 'douyin') {
       runtimeConfig.sources.douyin.cookie = value;
       runtimeConfig.sources.douyin.enabled = true;
     } else if (platform === 'xiaohongshu') {
       runtimeConfig.sources.xiaohongshu.cookie = value;
       runtimeConfig.sources.xiaohongshu.enabled = true;
+    } else if (platform === 'weibo') {
+      runtimeConfig.sources.weibo.cookie = value;
+      runtimeConfig.sources.weibo.enabled = true;
     } else {
       throw new Error(`Unsupported platform credential: ${platform}`);
     }
@@ -187,21 +284,154 @@ class AdminServer {
     return runtimeConfig;
   }
 
+  private getProfile(userId: string): unknown {
+    const runtimeConfig = this.getRuntimeConfig(userId);
+    const profilePath = this.resolveProfilePath(runtimeConfig);
+    if (!existsSync(profilePath)) {
+      return {
+        profilePath,
+        bio: '',
+        topics: [],
+        interests: [],
+        style: '',
+        audience: '',
+        samplePosts: []
+      };
+    }
+
+    const profile = JSON.parse(readFileSync(profilePath, 'utf8')) as InitialProfileData;
+    return {
+      profilePath,
+      bio: profile.bio || '',
+      topics: profile.topics || [],
+      interests: profile.interests || [],
+      style: profile.writingStyle?.tone || '',
+      audience: profile.audience || '',
+      samplePosts: (profile.sampleTweets || []).map((tweet) => tweet.text)
+    };
+  }
+
+  private saveProfile(userId: string, body: JsonBody): unknown {
+    const runtimeConfig = this.getRuntimeConfig(userId);
+    const profilePath = this.resolveProfilePath(runtimeConfig);
+    const existing = existsSync(profilePath)
+      ? JSON.parse(readFileSync(profilePath, 'utf8')) as Partial<InitialProfileData>
+      : {};
+    const form = body as ProfileFormData;
+    const interests = this.stringArray(form.interests);
+    const topics = this.stringArray(form.topics);
+    const sampleTexts = this.stringArray(form.samplePosts);
+    const sampleTweets: SampleTweet[] = sampleTexts.map((text) => ({ text, likes: 0 }));
+
+    const profile: InitialProfileData = {
+      accountHandle: runtimeConfig.accountHandle || existing.accountHandle || userId,
+      bio: this.stringValue(form.bio) || existing.bio || '',
+      topics: topics.length > 0 ? topics : existing.topics || interests,
+      writingStyle: {
+        tone: this.stringValue(form.style) || existing.writingStyle?.tone || '',
+        avgLength: existing.writingStyle?.avgLength || 280,
+        emojiUsage: existing.writingStyle?.emojiUsage || '适中',
+        commonEmojis: existing.writingStyle?.commonEmojis || [],
+        structure: existing.writingStyle?.structure,
+      },
+      interests: interests.length > 0 ? interests : existing.interests || [],
+      audience: this.stringValue(form.audience) || existing.audience || '',
+      tweetCount: existing.tweetCount || sampleTweets.length,
+      sampleTweets: sampleTweets.length > 0 ? sampleTweets : existing.sampleTweets || [],
+    };
+
+    mkdirSync(dirname(profilePath), { recursive: true });
+    writeFileSync(profilePath, `${JSON.stringify(profile, null, 2)}\n`, 'utf8');
+
+    if (!runtimeConfig.profilePath) {
+      this.repository.save({ ...runtimeConfig, profilePath });
+    }
+
+    logger.info(`Profile saved for user ${userId}: ${profilePath}`);
+    return this.getProfile(userId);
+  }
+
   private normalizeConfig(userId: string, body: JsonBody): UserRuntimeConfig {
     const base = this.repository.get(userId) || this.defaultConfig(userId);
     const incoming = body as Partial<UserRuntimeConfig>;
+    const sources = {
+      ...base.sources,
+      ...incoming.sources,
+      zhihu: {
+        ...base.sources.zhihu,
+        ...incoming.sources?.zhihu,
+      },
+      douyin: {
+        ...base.sources.douyin,
+        ...incoming.sources?.douyin,
+      },
+      xiaohongshu: {
+        ...base.sources.xiaohongshu,
+        ...incoming.sources?.xiaohongshu,
+      },
+      reddit: {
+        ...base.sources.reddit,
+        ...incoming.sources?.reddit,
+      },
+      weibo: {
+        ...base.sources.weibo,
+        ...incoming.sources?.weibo,
+      },
+    };
+    const lark = {
+      ...base.lark,
+      ...incoming.lark,
+    };
+    if (!incoming.lark?.appSecret) {
+      lark.appSecret = base.lark.appSecret;
+    }
+    const ai = {
+      embedding: {
+        ...base.ai.embedding,
+        ...incoming.ai?.embedding,
+      },
+      deepseek: {
+        ...base.ai.deepseek,
+        ...incoming.ai?.deepseek,
+      },
+      grokBridge: {
+        ...base.ai.grokBridge,
+        ...incoming.ai?.grokBridge,
+      },
+    };
+    if (!incoming.ai?.embedding?.apiKey) {
+      ai.embedding.apiKey = base.ai.embedding.apiKey;
+    }
+    if (!incoming.ai?.deepseek?.apiKey) {
+      ai.deepseek.apiKey = base.ai.deepseek.apiKey;
+    }
+    if (!incoming.ai?.grokBridge?.token) {
+      ai.grokBridge.token = base.ai.grokBridge.token;
+    }
+    ai.grokBridge.timeoutMs = Number(ai.grokBridge.timeoutMs || base.ai.grokBridge.timeoutMs || 180000);
+    if (!incoming.sources?.zhihu?.cookie) {
+      sources.zhihu.cookie = base.sources.zhihu.cookie;
+    }
+    if (!incoming.sources?.douyin?.cookie) {
+      sources.douyin.cookie = base.sources.douyin.cookie;
+    }
+    if (!incoming.sources?.douyin?.tiktokDownloaderToken) {
+      sources.douyin.tiktokDownloaderToken = base.sources.douyin.tiktokDownloaderToken;
+    }
+    if (!incoming.sources?.xiaohongshu?.cookie) {
+      sources.xiaohongshu.cookie = base.sources.xiaohongshu.cookie;
+    }
+    if (!incoming.sources?.weibo?.cookie) {
+      sources.weibo.cookie = base.sources.weibo.cookie;
+    }
+
     return {
       ...base,
       ...incoming,
       userId,
-      sources: {
-        ...base.sources,
-        ...incoming.sources,
-      },
-      lark: {
-        ...base.lark,
-        ...incoming.lark,
-      },
+      sources,
+      lark,
+      ai,
       schedule: {
         ...base.schedule,
         ...incoming.schedule,
@@ -220,12 +450,192 @@ class AdminServer {
     };
   }
 
+  private withLocalAiFallback(userId: string, runtimeConfig: UserRuntimeConfig): UserRuntimeConfig {
+    if (userId !== localRuntimeConfig.userId) {
+      return runtimeConfig;
+    }
+
+    return {
+      ...runtimeConfig,
+      ai: {
+        embedding: {
+          apiKey: runtimeConfig.ai.embedding.apiKey || localRuntimeConfig.ai.embedding.apiKey,
+          baseURL: runtimeConfig.ai.embedding.baseURL || localRuntimeConfig.ai.embedding.baseURL,
+          model: runtimeConfig.ai.embedding.model || localRuntimeConfig.ai.embedding.model,
+        },
+        deepseek: {
+          apiKey: runtimeConfig.ai.deepseek.apiKey || localRuntimeConfig.ai.deepseek.apiKey,
+          baseURL: runtimeConfig.ai.deepseek.baseURL || localRuntimeConfig.ai.deepseek.baseURL,
+        },
+        grokBridge: {
+          url: runtimeConfig.ai.grokBridge.url || localRuntimeConfig.ai.grokBridge.url,
+          token: runtimeConfig.ai.grokBridge.token || localRuntimeConfig.ai.grokBridge.token,
+          timeoutMs: runtimeConfig.ai.grokBridge.timeoutMs || localRuntimeConfig.ai.grokBridge.timeoutMs,
+        },
+      },
+    };
+  }
+
+  private blankConfig(userId: string): UserRuntimeConfig {
+    const base = this.defaultConfig(userId);
+    return {
+      userId,
+      accountHandle: userId,
+      profilePath: '',
+      sources: {
+        x: { enabled: false },
+        hackernews: { enabled: false },
+        github: { enabled: false },
+        zhihu: { enabled: false, keywords: [], cookie: '' },
+        producthunt: { enabled: false },
+        reddit: { enabled: false, subreddits: [] },
+        v2ex: { enabled: false },
+        douyin: {
+          enabled: false,
+          keywords: [],
+          cookie: '',
+          tiktokDownloaderApiUrl: '',
+          tiktokDownloaderToken: '',
+        },
+        xiaohongshu: {
+          enabled: false,
+          keywords: [],
+          cookie: '',
+          adapter: 'redbook',
+          cookieSource: 'chrome',
+          chromeProfile: '',
+        },
+        weibo: { enabled: false, keywords: [], cookie: '' },
+      },
+      lark: {
+        appId: '',
+        appSecret: '',
+        baseId: '',
+        defaultReceiverId: '',
+      },
+      ai: {
+        embedding: {
+          apiKey: '',
+          baseURL: base.ai.embedding.baseURL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          model: base.ai.embedding.model || 'text-embedding-v4',
+        },
+        deepseek: {
+          apiKey: '',
+          baseURL: base.ai.deepseek.baseURL || 'https://api.deepseek.com',
+        },
+        grokBridge: {
+          url: '',
+          token: '',
+          timeoutMs: base.ai.grokBridge.timeoutMs || 180000,
+        },
+      },
+      schedule: base.schedule,
+      rateLimit: base.rateLimit,
+    };
+  }
+
+  private publicConfig(configForUser: UserRuntimeConfig): unknown {
+    const clone = JSON.parse(JSON.stringify(configForUser)) as UserRuntimeConfig;
+    const status = {
+      larkAppSecret: Boolean(configForUser.lark.appSecret),
+      zhihuCookie: Boolean(configForUser.sources.zhihu.cookie),
+      douyinCookie: Boolean(configForUser.sources.douyin.cookie),
+      douyinTikTokDownloaderToken: Boolean(configForUser.sources.douyin.tiktokDownloaderToken),
+      xiaohongshuCookie: Boolean(configForUser.sources.xiaohongshu.cookie),
+      weiboCookie: Boolean(configForUser.sources.weibo.cookie),
+      embeddingApiKey: Boolean(configForUser.ai.embedding.apiKey),
+      deepseekApiKey: Boolean(configForUser.ai.deepseek.apiKey),
+      grokBridgeToken: Boolean(configForUser.ai.grokBridge.token),
+    };
+
+    clone.lark.appSecret = '';
+    clone.ai.embedding.apiKey = '';
+    clone.ai.deepseek.apiKey = '';
+    clone.ai.grokBridge.token = '';
+    clone.sources.zhihu.cookie = '';
+    clone.sources.douyin.cookie = '';
+    clone.sources.douyin.tiktokDownloaderToken = '';
+    clone.sources.xiaohongshu.cookie = '';
+    clone.sources.weibo.cookie = '';
+
+    return {
+      ...clone,
+      credentialStatus: status,
+    };
+  }
+
+  private resolveProfilePath(runtimeConfig: UserRuntimeConfig): string {
+    if (runtimeConfig.profilePath) {
+      return resolve(runtimeConfig.profilePath);
+    }
+
+    return resolve('./data/profiles', `${this.safeFileName(runtimeConfig.userId)}.json`);
+  }
+
+  private safeFileName(value: string): string {
+    return value.replace(/[^a-zA-Z0-9._-]/g, '_') || 'local';
+  }
+
+  private stringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+    }
+
+    if (typeof value === 'string') {
+      return value
+        .split(/[,\n]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    return [];
+  }
+
+  private stringValue(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private isAuthorized(req: IncomingMessage, url: URL): boolean {
+    if (!this.adminToken) {
+      return true;
+    }
+
+    const rawAuthorization = req.headers.authorization;
+    const authorization = typeof rawAuthorization === 'string' ? rawAuthorization : '';
+    const headerToken = authorization.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length)
+      : '';
+    const adminHeader = req.headers['x-admin-token'];
+    const xAdminToken = typeof adminHeader === 'string'
+      ? adminHeader
+      : Array.isArray(adminHeader) && typeof adminHeader[0] === 'string'
+      ? adminHeader[0]
+      : '';
+    const queryToken = url.searchParams.get('token') || '';
+
+    return [headerToken, xAdminToken, queryToken].includes(this.adminToken);
+  }
+
+  private unauthorized(res: ServerResponse): void {
+    this.json(res, { error: 'Unauthorized' }, 401);
+  }
+
+  private isLoopbackHost(host: string): boolean {
+    return ['127.0.0.1', 'localhost', '::1'].includes(host);
+  }
+
   private connectionStatus(userId: string): Record<string, boolean> {
     const keys = new Set(this.db.getRuntimeCredentials(userId).map((row) => row.credential_key));
     return {
+      zhihu: keys.has('zhihu_cookie'),
       douyin: keys.has('douyin_cookie'),
       xiaohongshu: keys.has('xiaohongshu_cookie'),
+      weibo: keys.has('weibo_cookie'),
     };
+  }
+
+  private dashboardSources(): typeof sourceNames {
+    return sourceNames.filter((source) => source !== 'x' && source !== 'producthunt') as typeof sourceNames;
   }
 
   private async readJson(req: IncomingMessage): Promise<JsonBody> {
@@ -287,23 +697,26 @@ class AdminServer {
       <div class="lg:col-span-1">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
           <div class="p-4 border-b border-gray-200">
-            <h2 class="text-lg font-semibold text-gray-900">用户列表</h2>
+            <h2 class="text-lg font-semibold text-gray-900">用户</h2>
           </div>
           <div class="p-4">
             <div class="mb-4">
               <input
                 id="userId"
                 type="text"
-                placeholder="输入用户 ID"
+                placeholder="新用户 ID（可选）"
                 value="local"
+                onkeydown="if(event.key === 'Enter') createUser()"
                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
               <button
-                onclick="loadUser()"
-                class="mt-2 w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+                id="createUserButton"
+                onclick="createUser()"
+                class="mt-2 w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-blue-300 transition"
               >
-                加载/新建用户
+                新建用户
               </button>
+              <div id="userActionMessage" class="mt-2 text-xs text-gray-500">点击列表切换用户；新建可留空自动生成 ID。</div>
             </div>
             <div id="users" class="space-y-2"></div>
           </div>
@@ -379,8 +792,83 @@ class AdminServer {
                       <input id="configUserId" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如: local">
                     </div>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">账号名称</label>
-                      <input id="configAccountHandle" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如: @myaccount">
+                      <label class="block text-sm font-medium text-gray-700 mb-2">画像文件路径</label>
+                      <input id="configProfilePath" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="留空则使用 data/profiles/{用户ID}.json">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- AI Section -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6">
+                  <h3 class="text-lg font-semibold text-gray-900 mb-4">模型配置</h3>
+                  <div class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Embedding API Key</label>
+                        <input id="configEmbeddingApiKey" type="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="阿里云百炼 API Key">
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Embedding Base URL</label>
+                        <input id="configEmbeddingBaseUrl" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1">
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Embedding Model</label>
+                        <input id="configEmbeddingModel" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="text-embedding-v4">
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">DeepSeek API Key</label>
+                        <input id="configDeepseekApiKey" type="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="DeepSeek API Key">
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">DeepSeek Base URL</label>
+                        <input id="configDeepseekBaseUrl" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://api.deepseek.com">
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Grok Bridge URL</label>
+                        <input id="configGrokBridgeUrl" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="http://127.0.0.1:4590">
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Grok Bridge Token</label>
+                        <input id="configGrokBridgeToken" type="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="可选">
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Grok 超时(ms)</label>
+                        <input id="configGrokBridgeTimeoutMs" type="number" min="1000" step="1000" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="180000">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Source Parameters Section -->
+                <div class="bg-white border border-gray-200 rounded-lg p-6">
+                  <h3 class="text-lg font-semibold text-gray-900 mb-2">搜索关键词</h3>
+                  <p class="text-sm text-gray-500 mb-4">仅支持站内搜索的平台需要关键词；Hacker News、GitHub、V2EX 抓热门榜后由模型筛选。</p>
+                  <div class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">知乎关键词</label>
+                        <input id="configZhihuKeywords" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">抖音关键词</label>
+                        <input id="configDouyinKeywords" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">小红书关键词</label>
+                        <input id="configXiaohongshuKeywords" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">微博关键词</label>
+                        <input id="configWeiboKeywords" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">Reddit 关注社区</label>
+                      <input id="configRedditSubreddits" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="LocalLLaMA, OpenAI, programming">
                     </div>
                   </div>
                 </div>
@@ -506,8 +994,12 @@ class AdminServer {
                 <p class="text-sm text-gray-500">点击开关启用或禁用平台，修改后记得保存配置</p>
               </div>
 
-              <div id="platformsList" class="space-y-3">
+              <div id="platformsList" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 <!-- Platforms will be rendered here by JavaScript -->
+              </div>
+
+              <div id="platformCredentialPanel" class="hidden mt-4 border border-gray-200 rounded-lg p-4 bg-gray-50">
+                <!-- Selected platform credential controls will be rendered here -->
               </div>
 
               <div class="mt-6">
@@ -516,19 +1008,60 @@ class AdminServer {
                 </button>
               </div>
 
-              <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div class="flex">
-                  <div class="flex-shrink-0">
-                    <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-                    </svg>
+              <div class="mt-6 space-y-4">
+                <!-- Cookie 获取教程 -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div class="flex">
+                    <div class="flex-shrink-0">
+                      <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                      </svg>
+                    </div>
+                    <div class="ml-3 flex-1">
+                      <h3 class="text-sm font-medium text-blue-800 mb-2">如何获取 Cookie？</h3>
+                      <div class="space-y-3">
+                        <div>
+                          <p class="text-sm font-semibold text-blue-900 mb-1">方法一：使用浏览器开发者工具（推荐）</p>
+                          <ol class="list-decimal list-inside space-y-1 text-sm text-blue-700 ml-2">
+                            <li>在浏览器中登录对应平台（知乎、抖音、小红书、微博）</li>
+                            <li>按 <kbd class="px-1 py-0.5 bg-white rounded text-xs">F12</kbd> 打开开发者工具</li>
+                            <li>切换到 <strong>Network（网络）</strong> 标签</li>
+                            <li>刷新页面（<kbd class="px-1 py-0.5 bg-white rounded text-xs">F5</kbd>）</li>
+                            <li>点击任意请求，在右侧找到 <strong>Request Headers</strong></li>
+                            <li>找到 <code class="bg-white px-1 rounded">Cookie:</code> 这一行</li>
+                            <li>复制整行 Cookie 值（通常很长），粘贴到上方输入框</li>
+                          </ol>
+                        </div>
+                        <div class="pt-2 border-t border-blue-200">
+                          <p class="text-sm font-semibold text-blue-900 mb-1">方法二：使用浏览器扩展（即将支持）</p>
+                          <p class="text-sm text-blue-700">安装 Cookie 导出扩展，一键复制当前网站的 Cookie</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="ml-3">
-                    <h3 class="text-sm font-medium text-blue-800">平台说明</h3>
-                    <div class="mt-2 text-sm text-blue-700 space-y-1">
-                      <p><strong>需要 Cookie：</strong>抖音、小红书需要登录后获取 Cookie</p>
-                      <p><strong>免费平台：</strong>HackerNews、GitHub、知乎、Reddit、V2EX 可直接使用</p>
-                      <p><strong>需要 Token：</strong>X (Twitter)、ProductHunt 需要申请 API Token</p>
+                </div>
+
+                <!-- 平台说明 -->
+                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 class="text-sm font-medium text-gray-800 mb-2">平台说明</h3>
+                  <div class="text-sm text-gray-600 space-y-1">
+                    <p>🔐 <strong>需要登录：</strong>知乎、抖音、小红书、微博</p>
+                    <p>🆓 <strong>免费平台：</strong>HackerNews、GitHub、Reddit、V2EX（无需配置）</p>
+                    <p>🔑 <strong>高级配置：</strong>X、Product Hunt 暂不在普通界面配置</p>
+                  </div>
+                </div>
+
+                <!-- Cookie 安全提示 -->
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div class="flex">
+                    <div class="flex-shrink-0">
+                      <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                      </svg>
+                    </div>
+                    <div class="ml-3">
+                      <h3 class="text-sm font-medium text-yellow-800">安全提示</h3>
+                      <p class="mt-1 text-sm text-yellow-700">Cookie 包含你的登录凭证，请妥善保管。本系统会加密存储 Cookie，但请不要分享给他人。</p>
                     </div>
                   </div>
                 </div>
@@ -543,7 +1076,7 @@ class AdminServer {
                 </button>
               </div>
               <div id="logsContainer" class="bg-gray-50 rounded-lg p-4 border border-gray-200 max-h-96 overflow-y-auto">
-                <pre id="logs" class="text-xs text-gray-600 whitespace-pre-wrap font-mono">加载中...</pre>
+                <div id="logs" class="space-y-3 text-sm text-gray-700">加载中...</div>
               </div>
             </div>
 
@@ -569,18 +1102,26 @@ class AdminServer {
   <script>
     let currentUserId = 'local';
     let currentConfig = null;
+    let selectedPlatformId = null;
+    let logsRefreshTimer = null;
+    let knownUserIds = new Set();
+    const tokenFromUrl = new URLSearchParams(window.location.search).get('token');
+    if (tokenFromUrl) {
+      localStorage.setItem('contentScoutAdminToken', tokenFromUrl);
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    const adminToken = localStorage.getItem('contentScoutAdminToken') || '';
 
     // Platform definitions
     const platforms = [
-      { id: 'x', name: 'X (Twitter)', icon: '𝕏', color: 'bg-black', needsAuth: 'token', description: '需要 API Token' },
       { id: 'hackernews', name: 'Hacker News', icon: 'HN', color: 'bg-orange-500', needsAuth: false, description: '免费使用' },
       { id: 'github', name: 'GitHub Trending', icon: 'GH', color: 'bg-gray-800', needsAuth: false, description: '免费使用' },
-      { id: 'zhihu', name: '知乎', icon: '知', color: 'bg-blue-600', needsAuth: false, description: '免费使用' },
-      { id: 'producthunt', name: 'Product Hunt', icon: 'PH', color: 'bg-red-500', needsAuth: 'token', description: '需要 API Token' },
+      { id: 'zhihu', name: '知乎', icon: '知', color: 'bg-blue-600', needsAuth: 'cookie', description: '需要登录' },
       { id: 'reddit', name: 'Reddit', icon: 'RD', color: 'bg-orange-600', needsAuth: false, description: '免费使用' },
       { id: 'v2ex', name: 'V2EX', icon: 'V2', color: 'bg-gray-700', needsAuth: false, description: '免费使用' },
       { id: 'douyin', name: '抖音', icon: '抖', color: 'bg-black', needsAuth: 'cookie', description: '需要 Cookie' },
-      { id: 'xiaohongshu', name: '小红书', icon: '小', color: 'bg-red-500', needsAuth: 'cookie', description: '需要 Cookie' }
+      { id: 'xiaohongshu', name: '小红书', icon: '小', color: 'bg-red-500', needsAuth: 'cookie', description: '需要 Cookie' },
+      { id: 'weibo', name: '微博', icon: '微', color: 'bg-yellow-500', needsAuth: 'cookie', description: '需要登录' }
     ];
 
     // Toast notification
@@ -622,8 +1163,13 @@ class AdminServer {
     // API request helper
     async function request(path, options = {}) {
       try {
+        const headers = {'content-type': 'application/json'};
+        if (adminToken) {
+          headers.authorization = \`Bearer \${adminToken}\`;
+        }
+
         const response = await fetch(path, {
-          headers: {'content-type': 'application/json'},
+          headers,
           ...options
         });
         const data = await response.json();
@@ -639,51 +1185,203 @@ class AdminServer {
     async function loadUsers() {
       try {
         const users = await request('/api/users');
+        knownUserIds = new Set(users.map(u => u.userId));
         const container = document.getElementById('users');
-        container.innerHTML = users.map(u => \`
-          <button
-            onclick="selectUser('\${u.userId}')"
-            class="w-full text-left px-3 py-2 rounded-md hover:bg-gray-50 border border-gray-200 transition"
-          >
-            <div class="font-medium text-gray-900">\${u.userId}</div>
-            <div class="text-xs text-gray-500 mt-1">\${u.enabledSources.join(', ') || '未配置'}</div>
-          </button>
-        \`).join('');
+        if (!users.length) {
+          container.innerHTML = '<div class="text-sm text-gray-500 px-1 py-2">暂无用户</div>';
+          return users;
+        }
+
+        container.innerHTML = users.map(u => {
+          const enabledCount = Array.isArray(u.enabledSources) ? u.enabledSources.length : 0;
+          const activeClass = u.userId === currentUserId
+            ? 'border-blue-500 bg-blue-50 text-blue-900'
+            : 'border-gray-200 hover:bg-gray-50 text-gray-900';
+
+          return \`
+            <div class="flex items-stretch gap-2">
+              <button
+                onclick="selectUser('\${encodeURIComponent(u.userId)}')"
+                class="min-w-0 flex-1 text-left px-3 py-2 rounded-md border transition \${activeClass}"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <span class="font-medium truncate">\${escapeHtml(u.userId)}</span>
+                  <span class="shrink-0 text-xs text-gray-500">\${enabledCount} 平台</span>
+                </div>
+              </button>
+              <button
+                onclick="deleteUser('\${encodeURIComponent(u.userId)}')"
+                class="shrink-0 px-2 rounded-md border border-red-200 text-red-600 hover:bg-red-50 text-xs"
+                title="删除用户"
+                aria-label="删除用户 \${escapeHtml(u.userId)}"
+              >
+                删除
+              </button>
+            </div>
+          \`;
+        }).join('');
+        return users;
       } catch (error) {
         console.error('Failed to load users:', error);
+        return [];
       }
     }
 
-    function selectUser(id) {
+    function selectUser(encodedId) {
+      const id = decodeURIComponent(encodedId);
       document.getElementById('userId').value = id;
       loadUser();
+    }
+
+    function readUserId() {
+      return document.getElementById('userId').value.trim() || 'local';
+    }
+
+    function readInputUserId() {
+      return document.getElementById('userId').value.trim();
+    }
+
+    function generateUserId() {
+      const now = new Date();
+      const pad = value => String(value).padStart(2, '0');
+      const base = \`user-\${now.getFullYear()}\${pad(now.getMonth() + 1)}\${pad(now.getDate())}-\${pad(now.getHours())}\${pad(now.getMinutes())}\${pad(now.getSeconds())}\`;
+      let candidate = base;
+      let index = 2;
+      while (knownUserIds.has(candidate)) {
+        candidate = \`\${base}-\${index}\`;
+        index += 1;
+      }
+      return candidate;
+    }
+
+    function setUserActionMessage(message, type = 'info') {
+      const element = document.getElementById('userActionMessage');
+      if (!element) return;
+      element.textContent = message;
+      element.className = type === 'error'
+        ? 'mt-2 text-xs text-red-600'
+        : 'mt-2 text-xs text-gray-500';
+    }
+
+    function parseCommaList(value) {
+      return String(value || '')
+        .split(/[,\\n]/)
+        .map(item => item.trim())
+        .filter(Boolean);
     }
 
     // Load user config
     async function loadUser() {
       try {
-        const id = document.getElementById('userId').value || 'local';
-        currentUserId = id;
+        const id = readUserId();
         const data = await request(\`/api/users/\${encodeURIComponent(id)}\`);
-        currentConfig = data;
-
-        document.getElementById('config').value = JSON.stringify(data, null, 2);
-        updateOverview(data);
-        updatePlatformStatus(data);
+        await applyLoadedUser(id, data);
+        await loadUsers();
+        setUserActionMessage(\`已切换到 \${id}\`);
         showToast('配置加载成功');
       } catch (error) {
         console.error('Failed to load user:', error);
       }
     }
 
+    async function createUser() {
+      const button = document.getElementById('createUserButton');
+      try {
+        if (button) {
+          button.disabled = true;
+          button.textContent = '创建中...';
+        }
+
+        await loadUsers();
+        const inputId = readInputUserId();
+        const id = inputId && !knownUserIds.has(inputId) ? inputId : generateUserId();
+        document.getElementById('userId').value = id;
+        const saved = await request(\`/api/users/\${encodeURIComponent(id)}\`, {
+          method: 'POST',
+          body: JSON.stringify({mode: 'create'})
+        });
+        await applyLoadedUser(id, saved);
+        await loadUsers();
+        setUserActionMessage(\`已新建用户 \${id}\`);
+        showToast('用户已新建');
+      } catch (error) {
+        setUserActionMessage(error.message, 'error');
+        console.error('Failed to create user:', error);
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = '新建用户';
+        }
+      }
+    }
+
+    async function deleteUser(encodedId) {
+      const id = decodeURIComponent(encodedId);
+      if (!confirm(\`删除用户 \${id}？该用户的配置、登录态和运行记录都会删除。\`)) {
+        return;
+      }
+
+      try {
+        await request(\`/api/users/\${encodeURIComponent(id)}\`, {method: 'DELETE'});
+        const users = await loadUsers();
+        if (currentUserId === id) {
+          if (users.length) {
+            document.getElementById('userId').value = users[0].userId;
+            await loadUser();
+          } else {
+            currentUserId = '';
+            currentConfig = null;
+            document.getElementById('userId').value = '';
+            setUserActionMessage('用户已删除，暂无用户');
+          }
+        }
+        showToast('用户已删除');
+      } catch (error) {
+        setUserActionMessage(error.message, 'error');
+        console.error('Failed to delete user:', error);
+      }
+    }
+
+    async function applyLoadedUser(id, data) {
+      currentUserId = id;
+      currentConfig = data;
+      document.getElementById('userId').value = id;
+      document.getElementById('config').value = JSON.stringify(data, null, 2);
+      updateOverview(data);
+      updatePlatformStatus(data);
+      loadConfigIntoForm(data);
+
+      try {
+        const profile = await request(\`/api/users/\${encodeURIComponent(id)}/profile\`);
+        document.getElementById('configInterests').value = Array.isArray(profile.interests)
+          ? profile.interests.join(', ')
+          : profile.interests || '';
+        document.getElementById('configStyle').value = profile.style || '';
+        document.getElementById('configAudience').value = profile.audience || '';
+        document.getElementById('configSamplePosts').value = Array.isArray(profile.samplePosts)
+          ? profile.samplePosts.join('\\n')
+          : profile.samplePosts || '';
+      } catch (error) {
+        document.getElementById('configInterests').value = '';
+        document.getElementById('configStyle').value = '';
+        document.getElementById('configAudience').value = '';
+        document.getElementById('configSamplePosts').value = '';
+      }
+    }
+
     // Update overview
     function updateOverview(config) {
-      const enabledSources = Object.keys(config.sources).filter(key => config.sources[key].enabled);
+      const enabledSources = platforms.filter(platform => config.sources[platform.id]?.enabled);
       document.getElementById('enabledSourcesCount').textContent = enabledSources.length;
       document.getElementById('scheduleStatus').textContent = config.schedule?.cronSchedule || '未设置';
 
-      const connections = [config.sources.douyin?.cookie, config.sources.xiaohongshu?.cookie].filter(Boolean).length;
-      document.getElementById('connectionCount').textContent = \`\${connections}/2\`;
+      const connections = [
+        config.credentialStatus?.zhihuCookie,
+        config.credentialStatus?.douyinCookie,
+        config.credentialStatus?.xiaohongshuCookie,
+        config.credentialStatus?.weiboCookie
+      ].filter(Boolean).length;
+      document.getElementById('connectionCount').textContent = \`\${connections}/4\`;
     }
 
     // Update platform status
@@ -694,67 +1392,31 @@ class AdminServer {
       const html = platforms.map(platform => {
         const isEnabled = config.sources[platform.id]?.enabled || false;
         const hasAuth = platform.needsAuth === 'cookie'
-          ? Boolean(config.sources[platform.id]?.cookie)
-          : platform.needsAuth === 'token'
-          ? Boolean(config.sources[platform.id]?.token)
+          ? Boolean(config.credentialStatus?.[\`\${platform.id}Cookie\`])
           : true;
+        const isSelected = selectedPlatformId === platform.id;
 
         const statusBadge = !platform.needsAuth || hasAuth
-          ? '<span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded">可用</span>'
-          : '<span class="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">需配置</span>';
+          ? '<span class="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">可用</span>'
+          : '<span class="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">需配置</span>';
 
         const toggleClass = isEnabled ? 'bg-blue-600' : 'bg-gray-200';
         const toggleSpanClass = isEnabled ? 'translate-x-6' : 'translate-x-1';
-
-        let authSection = '';
-        if (platform.needsAuth === 'cookie') {
-          authSection = \`
-            <div class="mt-3 pt-3 border-t border-gray-200">
-              <div class="flex space-x-2">
-                <input
-                  id="\${platform.id}Cookie"
-                  type="text"
-                  placeholder="粘贴 \${platform.name} Cookie"
-                  class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                <button onclick="saveCookie('\${platform.id}')" class="bg-gray-600 text-white px-4 py-2 text-sm rounded-md hover:bg-gray-700 transition">
-                  保存
-                </button>
-              </div>
-            </div>
-          \`;
-        } else if (platform.needsAuth === 'token') {
-          authSection = \`
-            <div class="mt-3 pt-3 border-t border-gray-200">
-              <div class="flex space-x-2">
-                <input
-                  id="\${platform.id}Token"
-                  type="text"
-                  placeholder="粘贴 \${platform.name} API Token"
-                  class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                <button onclick="saveToken('\${platform.id}')" class="bg-gray-600 text-white px-4 py-2 text-sm rounded-md hover:bg-gray-700 transition">
-                  保存
-                </button>
-              </div>
-            </div>
-          \`;
-        }
+        const selectedClass = isSelected ? 'border-blue-500 ring-2 ring-blue-100 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300';
 
         return \`
-          <div class="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center flex-1">
-                <div class="w-10 h-10 \${platform.color} rounded-lg flex items-center justify-center text-white font-bold text-sm">
+          <div class="border \${selectedClass} rounded-lg p-3 transition">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-center min-w-0">
+                <div class="w-9 h-9 \${platform.color} rounded-md flex items-center justify-center text-white font-bold text-xs shrink-0">
                   \${platform.icon}
                 </div>
-                <div class="ml-3 flex-1">
-                  <h3 class="font-semibold text-gray-900">\${platform.name}</h3>
-                  <p class="text-sm text-gray-500">\${platform.description}</p>
+                <div class="ml-3 min-w-0">
+                  <h3 class="font-semibold text-gray-900 truncate">\${platform.name}</h3>
+                  <p class="text-xs text-gray-500 truncate">\${platform.description}</p>
                 </div>
               </div>
-              <div class="flex items-center space-x-3">
-                \${statusBadge}
+              <div class="flex items-center gap-2 shrink-0">
                 <button
                   onclick="togglePlatform('\${platform.id}')"
                   class="relative inline-flex h-6 w-11 items-center rounded-full transition \${toggleClass}"
@@ -765,12 +1427,63 @@ class AdminServer {
                 </button>
               </div>
             </div>
-            \${authSection}
+            <div class="mt-3 flex items-center justify-between gap-2">
+              \${statusBadge}
+              \${platform.needsAuth === 'cookie' ? \`
+                <button onclick="selectPlatformCredential('\${platform.id}')" class="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">
+                  \${hasAuth ? '更新登录' : '配置登录'}
+                </button>
+              \` : '<span class="text-xs text-gray-400">无需登录</span>'}
+            </div>
           </div>
         \`;
       }).join('');
 
       container.innerHTML = html;
+      renderPlatformCredentialPanel(config);
+    }
+
+    function selectPlatformCredential(platformId) {
+      selectedPlatformId = platformId;
+      updatePlatformStatus(currentConfig);
+    }
+
+    function renderPlatformCredentialPanel(config) {
+      const panel = document.getElementById('platformCredentialPanel');
+      const platform = platforms.find(item => item.id === selectedPlatformId);
+      if (!panel || !platform || platform.needsAuth !== 'cookie') {
+        panel?.classList.add('hidden');
+        return;
+      }
+
+      const hasAuth = Boolean(config.credentialStatus?.[\`\${platform.id}Cookie\`]);
+      panel.classList.remove('hidden');
+      panel.innerHTML = \`
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center">
+            <div class="w-8 h-8 \${platform.color} rounded-md flex items-center justify-center text-white font-bold text-xs">\${platform.icon}</div>
+            <div class="ml-3">
+              <h3 class="font-semibold text-gray-900">\${platform.name} 登录配置</h3>
+              <p class="text-xs text-gray-500">仅本地部署可用，登录态保存在本机数据目录</p>
+            </div>
+          </div>
+          <span class="px-2 py-1 text-xs font-medium rounded \${hasAuth ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">\${hasAuth ? '已连接' : '未连接'}</span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-2">
+          <input
+            id="\${platform.id}Cookie"
+            type="text"
+            placeholder="粘贴 \${platform.name} Cookie"
+            class="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+          <button onclick="saveCookie('\${platform.id}')" class="bg-gray-600 text-white px-4 py-2 text-sm rounded-md hover:bg-gray-700 transition">
+            保存 Cookie
+          </button>
+          <button onclick="launchLogin('\${platform.id}')" class="bg-blue-600 text-white px-4 py-2 text-sm rounded-md hover:bg-blue-700 transition">
+            本地辅助登录
+          </button>
+        </div>
+      \`;
     }
 
     // Toggle platform enabled/disabled
@@ -789,6 +1502,7 @@ class AdminServer {
         currentConfig.sources[platformId] = {};
       }
       currentConfig.sources[platformId].enabled = newState;
+      updatePlatformStatus(currentConfig);
     }
 
     // Save platform configuration
@@ -806,34 +1520,6 @@ class AdminServer {
         showToast('平台配置保存成功');
       } catch (error) {
         console.error('Failed to save platform config:', error);
-      }
-    }
-
-    // Save token
-    async function saveToken(platform) {
-      try {
-        const id = currentUserId;
-        const input = \`\${platform}Token\`;
-        const value = document.getElementById(input).value;
-
-        if (!value) {
-          showToast('请输入 Token', 'error');
-          return;
-        }
-
-        const data = await request(\`/api/users/\${encodeURIComponent(id)}/credentials/\${platform}\`, {
-          method: 'POST',
-          body: JSON.stringify({value})
-        });
-
-        currentConfig = data;
-        document.getElementById('config').value = JSON.stringify(data, null, 2);
-        document.getElementById(input).value = '';
-        await loadUsers();
-        updatePlatformStatus(data);
-        showToast(\`\${platform} Token 保存成功\`);
-      } catch (error) {
-        console.error('Failed to save token:', error);
       }
     }
 
@@ -858,10 +1544,36 @@ class AdminServer {
     function loadConfigIntoForm(config) {
       // Basic info
       document.getElementById('configUserId').value = config.userId || '';
-      document.getElementById('configAccountHandle').value = config.accountHandle || '';
+      document.getElementById('configProfilePath').value = config.profilePath || '';
 
-      // Profile - need to read from profile file
-      // For now, leave empty as profile is in separate file
+      // AI
+      document.getElementById('configEmbeddingBaseUrl').value = config.ai?.embedding?.baseURL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+      document.getElementById('configEmbeddingModel').value = config.ai?.embedding?.model || 'text-embedding-v4';
+      document.getElementById('configDeepseekBaseUrl').value = config.ai?.deepseek?.baseURL || 'https://api.deepseek.com';
+      document.getElementById('configGrokBridgeUrl').value = config.ai?.grokBridge?.url || '';
+      document.getElementById('configGrokBridgeTimeoutMs').value = config.ai?.grokBridge?.timeoutMs || 180000;
+      const embeddingApiKeyInput = document.getElementById('configEmbeddingApiKey');
+      embeddingApiKeyInput.value = '';
+      embeddingApiKeyInput.placeholder = config.credentialStatus?.embeddingApiKey
+        ? '已配置，留空保持不变'
+        : '阿里云百炼 API Key';
+      const deepseekApiKeyInput = document.getElementById('configDeepseekApiKey');
+      deepseekApiKeyInput.value = '';
+      deepseekApiKeyInput.placeholder = config.credentialStatus?.deepseekApiKey
+        ? '已配置，留空保持不变'
+        : 'DeepSeek API Key';
+      const grokBridgeTokenInput = document.getElementById('configGrokBridgeToken');
+      grokBridgeTokenInput.value = '';
+      grokBridgeTokenInput.placeholder = config.credentialStatus?.grokBridgeToken
+        ? '已配置，留空保持不变'
+        : '可选';
+
+      // Sources
+      document.getElementById('configZhihuKeywords').value = (config.sources?.zhihu?.keywords || []).join(', ');
+      document.getElementById('configDouyinKeywords').value = (config.sources?.douyin?.keywords || []).join(', ');
+      document.getElementById('configXiaohongshuKeywords').value = (config.sources?.xiaohongshu?.keywords || []).join(', ');
+      document.getElementById('configWeiboKeywords').value = (config.sources?.weibo?.keywords || []).join(', ');
+      document.getElementById('configRedditSubreddits').value = (config.sources?.reddit?.subreddits || []).join(', ');
 
       // Schedule
       const cronSchedule = config.schedule?.cronSchedule || '0 9 * * *';
@@ -881,7 +1593,11 @@ class AdminServer {
 
       // Feishu
       document.getElementById('configFeishuAppId').value = config.lark?.appId || '';
-      document.getElementById('configFeishuAppSecret').value = config.lark?.appSecret || '';
+      const appSecretInput = document.getElementById('configFeishuAppSecret');
+      appSecretInput.value = '';
+      appSecretInput.placeholder = config.credentialStatus?.larkAppSecret
+        ? '已配置，留空保持不变'
+        : '从飞书开放平台获取';
       document.getElementById('configFeishuBaseId').value = config.lark?.baseId || '';
       document.getElementById('configFeishuReceiverId').value = config.lark?.defaultReceiverId || '';
 
@@ -900,21 +1616,80 @@ class AdminServer {
           ? document.getElementById('configCustomCron').value
           : scheduleSelect;
 
+        const appSecret = document.getElementById('configFeishuAppSecret').value;
+        const larkConfig = {
+          appId: document.getElementById('configFeishuAppId').value,
+          baseId: document.getElementById('configFeishuBaseId').value,
+          defaultReceiverId: document.getElementById('configFeishuReceiverId').value
+        };
+        if (appSecret) {
+          larkConfig.appSecret = appSecret;
+        }
+        const embeddingApiKey = document.getElementById('configEmbeddingApiKey').value;
+        const deepseekApiKey = document.getElementById('configDeepseekApiKey').value;
+        const grokBridgeToken = document.getElementById('configGrokBridgeToken').value;
+        const aiConfig = {
+          embedding: {
+            ...currentConfig.ai?.embedding,
+            baseURL: document.getElementById('configEmbeddingBaseUrl').value,
+            model: document.getElementById('configEmbeddingModel').value
+          },
+          deepseek: {
+            ...currentConfig.ai?.deepseek,
+            baseURL: document.getElementById('configDeepseekBaseUrl').value
+          },
+          grokBridge: {
+            ...currentConfig.ai?.grokBridge,
+            url: document.getElementById('configGrokBridgeUrl').value,
+            timeoutMs: Number(document.getElementById('configGrokBridgeTimeoutMs').value || 180000)
+          }
+        };
+        if (embeddingApiKey) {
+          aiConfig.embedding.apiKey = embeddingApiKey;
+        }
+        if (deepseekApiKey) {
+          aiConfig.deepseek.apiKey = deepseekApiKey;
+        }
+        if (grokBridgeToken) {
+          aiConfig.grokBridge.token = grokBridgeToken;
+        }
+        const sourcesConfig = {
+          ...currentConfig.sources,
+          zhihu: {
+            ...currentConfig.sources.zhihu,
+            keywords: parseCommaList(document.getElementById('configZhihuKeywords').value)
+          },
+          douyin: {
+            ...currentConfig.sources.douyin,
+            keywords: parseCommaList(document.getElementById('configDouyinKeywords').value)
+          },
+          xiaohongshu: {
+            ...currentConfig.sources.xiaohongshu,
+            keywords: parseCommaList(document.getElementById('configXiaohongshuKeywords').value)
+          },
+          weibo: {
+            ...currentConfig.sources.weibo,
+            keywords: parseCommaList(document.getElementById('configWeiboKeywords').value)
+          },
+          reddit: {
+            ...currentConfig.sources.reddit,
+            subreddits: parseCommaList(document.getElementById('configRedditSubreddits').value)
+          }
+        };
+
         // Build config object
         const payload = {
           ...currentConfig,
           userId: document.getElementById('configUserId').value,
-          accountHandle: document.getElementById('configAccountHandle').value,
+          accountHandle: currentConfig.accountHandle || document.getElementById('configUserId').value,
+          profilePath: document.getElementById('configProfilePath').value,
+          sources: sourcesConfig,
           schedule: {
             cronSchedule: cronSchedule,
             timezone: document.getElementById('configTimezone').value
           },
-          lark: {
-            appId: document.getElementById('configFeishuAppId').value,
-            appSecret: document.getElementById('configFeishuAppSecret').value,
-            baseId: document.getElementById('configFeishuBaseId').value,
-            defaultReceiverId: document.getElementById('configFeishuReceiverId').value
-          }
+          lark: larkConfig,
+          ai: aiConfig
         };
 
         // Save profile data separately if provided
@@ -930,7 +1705,6 @@ class AdminServer {
           if (audience) profilePayload.audience = audience;
           if (samplePosts) profilePayload.samplePosts = samplePosts.split('\\n').filter(s => s.trim());
 
-          // Save profile via API (you'll need to add this endpoint)
           await request(\`/api/users/\${encodeURIComponent(id)}/profile\`, {
             method: 'PUT',
             body: JSON.stringify(profilePayload)
@@ -994,12 +1768,42 @@ class AdminServer {
         updatePlatformStatus(data);
 
         const platformNames = {
+          'zhihu': '知乎',
           'douyin': '抖音',
-          'xiaohongshu': '小红书'
+          'xiaohongshu': '小红书',
+          'weibo': '微博'
         };
         showToast(\`\${platformNames[platform] || platform} Cookie 保存成功\`);
       } catch (error) {
         console.error('Failed to save cookie:', error);
+      }
+    }
+
+    // Launch login window
+    async function launchLogin(platform) {
+      try {
+        const id = currentUserId;
+        showToast('正在打开登录窗口，请在浏览器中完成登录...', 'success');
+
+        const data = await request(\`/api/users/\${encodeURIComponent(id)}/login/\${platform}\`, {
+          method: 'POST'
+        });
+
+        currentConfig = data;
+        document.getElementById('config').value = JSON.stringify(data, null, 2);
+        await loadUsers();
+        updatePlatformStatus(data);
+
+        const platformNames = {
+          'zhihu': '知乎',
+          'douyin': '抖音',
+          'xiaohongshu': '小红书',
+          'weibo': '微博'
+        };
+        showToast(\`\${platformNames[platform] || platform} 登录成功，Cookie 已保存\`);
+      } catch (error) {
+        console.error('Failed to launch login:', error);
+        showToast('登录失败: ' + error.message, 'error');
       }
     }
 
@@ -1011,6 +1815,8 @@ class AdminServer {
         const result = await request(\`/api/users/\${encodeURIComponent(id)}/run\`, {method: 'POST'});
         document.getElementById('status').textContent = JSON.stringify(result, null, 2);
         showToast('任务已提交');
+        switchTab('logs');
+        setTimeout(loadLogs, 500);
       } catch (error) {
         console.error('Failed to run user:', error);
       }
@@ -1033,15 +1839,165 @@ class AdminServer {
     async function loadLogs() {
       try {
         const runs = await request(\`/api/runs?userId=\${encodeURIComponent(currentUserId)}&limit=20\`);
-        document.getElementById('logs').textContent = JSON.stringify(runs, null, 2);
+        document.getElementById('logs').innerHTML = renderRuns(runs);
+        if (logsRefreshTimer) {
+          clearTimeout(logsRefreshTimer);
+          logsRefreshTimer = null;
+        }
+        const logsVisible = !document.getElementById('content-logs').classList.contains('hidden');
+        if (logsVisible && runs.some(run => run.status === 'running')) {
+          logsRefreshTimer = setTimeout(loadLogs, 3000);
+        }
       } catch (error) {
         console.error('Failed to load logs:', error);
       }
     }
 
-    // Initialize
-    loadUsers();
-    loadUser();
+    function renderRuns(runs) {
+      if (!runs.length) {
+        return '<div class="text-gray-500">暂无运行日志</div>';
+      }
+
+      return runs.map(run => {
+        const stats = parseStats(run.stats_json);
+        const stages = Array.isArray(stats.stages) ? stats.stages : [];
+        const aggregation = Array.isArray(stats.aggregation) ? stats.aggregation : [];
+        return \`
+          <div class="bg-white border border-gray-200 rounded-lg p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="font-semibold text-gray-900">\${escapeHtml(run.job_type)} · \${statusLabel(run.status)}</div>
+                <div class="text-xs text-gray-500 mt-1">\${formatTime(run.started_at)}\${run.finished_at ? ' - ' + formatTime(run.finished_at) : ''}</div>
+              </div>
+              <span class="px-2 py-1 text-xs font-medium rounded \${statusClass(run.status)}">\${statusLabel(run.status)}</span>
+            </div>
+            <div class="mt-2 text-sm text-gray-700">\${escapeHtml(run.message || '')}</div>
+            \${run.error ? \`<div class="mt-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded p-2">\${escapeHtml(run.error)}</div>\` : ''}
+            \${aggregation.length ? renderAggregation(aggregation) : ''}
+            \${stages.length ? renderStages(stages) : '<div class="mt-3 text-xs text-gray-500">暂无阶段明细</div>'}
+          </div>
+        \`;
+      }).join('');
+    }
+
+    function renderAggregation(aggregation) {
+      return \`
+        <div class="mt-3 overflow-x-auto">
+          <table class="min-w-full text-xs">
+            <thead>
+              <tr class="text-left text-gray-500 border-b border-gray-100">
+                <th class="py-1 pr-3">平台</th>
+                <th class="py-1 pr-3">抓取</th>
+                <th class="py-1 pr-3">入库</th>
+                <th class="py-1 pr-3">错误</th>
+              </tr>
+            </thead>
+            <tbody>
+              \${aggregation.map(item => \`
+                <tr class="border-b border-gray-50">
+                  <td class="py-1 pr-3 font-medium text-gray-800">\${escapeHtml(item.source || '')}</td>
+                  <td class="py-1 pr-3">\${Number(item.itemsCollected || 0)}</td>
+                  <td class="py-1 pr-3">\${Number(item.itemsSaved || 0)}</td>
+                  <td class="py-1 pr-3">\${Number(item.errors || 0)}</td>
+                </tr>
+              \`).join('')}
+            </tbody>
+          </table>
+        </div>
+      \`;
+    }
+
+    function renderStages(stages) {
+      return \`
+        <div class="mt-3 space-y-2">
+          \${stages.map(stage => \`
+            <div class="flex gap-3">
+              <span class="mt-1.5 h-2 w-2 rounded-full shrink-0 \${stageDotClass(stage.status)}"></span>
+              <div class="min-w-0">
+                <div class="text-sm">
+                  <span class="font-medium text-gray-900">\${escapeHtml(stage.phase || '')}</span>
+                  <span class="text-gray-700"> · \${escapeHtml(stage.message || '')}</span>
+                </div>
+                <div class="text-xs text-gray-500">\${formatTime(stage.at)}\${stage.data ? ' · ' + escapeHtml(formatStageData(stage.data)) : ''}</div>
+              </div>
+            </div>
+          \`).join('')}
+        </div>
+      \`;
+    }
+
+    function parseStats(value) {
+      if (!value) return {};
+      try {
+        return JSON.parse(value);
+      } catch {
+        return {};
+      }
+    }
+
+    function formatStageData(data) {
+      return Object.entries(data)
+        .map(([key, value]) => \`\${key}: \${Array.isArray(value) ? value.join(', ') : value}\`)
+        .join('，');
+    }
+
+    function statusLabel(status) {
+      return {
+        running: '运行中',
+        succeeded: '成功',
+        failed: '失败',
+        skipped: '跳过'
+      }[status] || status;
+    }
+
+    function statusClass(status) {
+      return {
+        running: 'bg-blue-100 text-blue-800',
+        succeeded: 'bg-green-100 text-green-800',
+        failed: 'bg-red-100 text-red-800'
+      }[status] || 'bg-gray-100 text-gray-700';
+    }
+
+    function stageDotClass(status) {
+      return {
+        running: 'bg-blue-500',
+        succeeded: 'bg-green-500',
+        failed: 'bg-red-500',
+        skipped: 'bg-gray-400'
+      }[status] || 'bg-gray-400';
+    }
+
+    function formatTime(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Initialize on DOM ready
+    document.addEventListener('DOMContentLoaded', function() {
+      // Handle schedule dropdown change
+      document.getElementById('configSchedule').addEventListener('change', function(e) {
+        const customContainer = document.getElementById('customCronContainer');
+        if (e.target.value === 'custom') {
+          customContainer.classList.remove('hidden');
+        } else {
+          customContainer.classList.add('hidden');
+        }
+      });
+
+      // Load initial data
+      loadUsers();
+      loadUser();
+    });
   </script>
 </body>
 </html>`;
@@ -1055,7 +2011,8 @@ function main(): void {
   const repository = new RuntimeConfigRepository(db);
   const queue = new RuntimeJobQueue(db);
   const port = Number(process.env.ADMIN_PORT || 8787);
-  new AdminServer(db, repository, queue).start(port);
+  const host = process.env.ADMIN_HOST || '127.0.0.1';
+  new AdminServer(db, repository, queue).start(port, host);
 }
 
 if (process.argv[1]?.endsWith('admin-server.ts') || process.argv[1]?.endsWith('admin-server.js')) {
