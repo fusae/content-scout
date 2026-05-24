@@ -8,6 +8,8 @@ let mainWindow: BrowserWindow | null = null;
 let adminProcess: ChildProcess | null = null;
 let adminUrl = '';
 let adminLogPath = '';
+let adminPort = 0;
+let restartAttempts = 0;
 let isQuitting = false;
 
 async function findFreePort(): Promise<number> {
@@ -109,16 +111,34 @@ function startAdminServer(port: number): void {
   adminProcess.once('exit', (code) => {
     adminProcess = null;
     if (!isQuitting) {
-      void dialog.showMessageBox({
-        type: 'error',
-        title: 'Content Scout',
-        message: '后台服务已退出',
-        detail: [
-          code === null ? '进程被终止。' : `退出码：${code}`,
-          adminLogPath ? `日志：${adminLogPath}` : '',
-        ].filter(Boolean).join('\n'),
-      });
+      if (restartAttempts < 3 && adminPort) {
+        restartAttempts += 1;
+        setTimeout(() => {
+          startAdminServer(adminPort);
+          void waitForHttp(adminUrl)
+            .then(async () => {
+              await mainWindow?.loadURL(adminUrl);
+            })
+            .catch((error: Error) => showBackendExitDialog(code, error.message));
+        }, 1000);
+        return;
+      }
+
+      showBackendExitDialog(code);
     }
+  });
+}
+
+function showBackendExitDialog(code: number | null, extraDetail = ''): void {
+  void dialog.showMessageBox({
+    type: 'error',
+    title: 'Content Scout',
+    message: '后台服务已退出',
+    detail: [
+      code === null ? '进程被终止。' : `退出码：${code}`,
+      extraDetail,
+      adminLogPath ? `日志：${adminLogPath}` : '',
+    ].filter(Boolean).join('\n'),
   });
 }
 
@@ -153,9 +173,11 @@ function createMenu(): void {
 
 async function createWindow(): Promise<void> {
   const port = await findFreePort();
+  adminPort = port;
   adminUrl = `http://127.0.0.1:${port}`;
   startAdminServer(port);
   await waitForHttp(adminUrl);
+  restartAttempts = 0;
 
   mainWindow = new BrowserWindow({
     width: 1280,

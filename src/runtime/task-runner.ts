@@ -2,7 +2,6 @@ import { ContentAggregator } from '../aggregator/index.js';
 import { DatabaseManager } from '../db/index.js';
 import { EmbeddingClient } from '../ai/embedding.js';
 import { DeepSeekClient } from '../ai/deepseek.js';
-import { GrokBridgeClient } from '../ai/grok-bridge.js';
 import { FeishuClient } from '../feishu/index.js';
 import { FilterEngine } from '../filter/index.js';
 import { DraftGenerator } from '../generator/index.js';
@@ -43,6 +42,7 @@ interface RuntimeTaskProgress {
     batches: number;
     validRecommendations: number;
     drafts: number;
+    degraded?: boolean;
   };
   push?: {
     attempted: number;
@@ -73,12 +73,13 @@ export class RuntimeTaskRunner {
     try {
       const result = await this.executeDaily(configForUser, runLogId, progress);
       progress.result = result;
-      this.logStage(runLogId, progress, '完成', 'succeeded', '本次运行完成', {
+      const summary = this.buildSummary(progress, result);
+      this.logStage(runLogId, progress, '完成', 'succeeded', summary, {
         recommendations: result.recommendations,
         pushed: result.pushed,
       });
       this.db.finishRuntimeRunLog(runLogId, 'succeeded', {
-        message: '运行完成',
+        message: summary,
         statsJson: JSON.stringify(progress),
       });
       return result;
@@ -147,17 +148,7 @@ export class RuntimeTaskRunner {
       configForUser.profilePath
     );
     const filterEngine = new FilterEngine(embeddingClient, deepseekClient, this.db);
-    const draftClient = aiConfig.grokBridge.url
-      ? new GrokBridgeClient(
-        aiConfig.grokBridge.url,
-        aiConfig.grokBridge.token,
-        aiConfig.grokBridge.timeoutMs
-      )
-      : deepseekClient;
-    const draftGenerator = new DraftGenerator(
-      draftClient,
-      aiConfig.grokBridge.url ? 'grok-bridge' : 'deepseek-chat'
-    );
+    const draftGenerator = new DraftGenerator(deepseekClient, 'deepseek-chat');
 
     this.logStage(runLogId, progress, '抓取', 'running', '开始抓取所有已启用平台', {
       sources: sourceNames.filter((source) => configForUser.sources[source].enabled),
@@ -244,13 +235,31 @@ export class RuntimeTaskRunner {
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    if (recommendations.length === 0) {
+      recommendations.push(...filterResult.contents.map((content) => ({
+        content,
+        drafts: [],
+      })));
+    }
+
     progress.drafts = {
       contents: filterResult.contents.length,
       batches: draftResults.length,
       validRecommendations: recommendations.length,
       drafts: draftResults.reduce((sum, result) => sum + result.drafts.length, 0),
+      degraded: draftResults.length === 0,
     };
-    this.logStage(runLogId, progress, '生成草稿', 'succeeded', `生成 ${progress.drafts.drafts} 条草稿，形成 ${recommendations.length} 条推荐`, progress.drafts);
+    this.logStage(
+      runLogId,
+      progress,
+      '生成草稿',
+      progress.drafts.degraded ? 'skipped' : 'succeeded',
+      progress.drafts.degraded
+        ? `草稿生成失败，降级推送 ${recommendations.length} 条候选内容`
+        : `生成 ${progress.drafts.drafts} 条草稿，形成 ${recommendations.length} 条推荐`,
+      progress.drafts
+    );
 
     if (!this.canPushToFeishu(configForUser)) {
       logger.warn(`Feishu config incomplete, skip push: ${configForUser.userId}`);
@@ -269,19 +278,34 @@ export class RuntimeTaskRunner {
     }
 
     this.logStage(runLogId, progress, '推送', 'running', `开始推送 ${recommendations.length} 条推荐到飞书`);
+    let pushResults: Awaited<ReturnType<FeishuClient['pushRecommendations']>> = [];
+    let pushError = '';
     const feishuClient = this.createFeishuClient(configForUser);
-    await feishuClient.initialize(configForUser.lark.defaultReceiverId, {
-      listenForActions: false,
-    });
-    const pushResults = await feishuClient.pushRecommendations(recommendations);
-    feishuClient.close();
+    try {
+      await feishuClient.initialize(configForUser.lark.defaultReceiverId, {
+        listenForActions: false,
+      });
+      pushResults = await feishuClient.pushRecommendations(recommendations);
+    } catch (error) {
+      pushError = (error as Error).message;
+      logger.error('Feishu push failed, keeping run result available in admin logs', error as Error);
+    } finally {
+      feishuClient.close();
+    }
     const pushed = pushResults.filter((result) => result.success).length;
     progress.push = {
       attempted: recommendations.length,
       succeeded: pushed,
-      failed: pushResults.length - pushed,
+      failed: pushError ? recommendations.length : pushResults.length - pushed,
     };
-    this.logStage(runLogId, progress, '推送', progress.push.failed > 0 ? 'failed' : 'succeeded', `飞书推送成功 ${pushed}/${recommendations.length}`, progress.push);
+    this.logStage(
+      runLogId,
+      progress,
+      '推送',
+      progress.push.failed > 0 ? 'failed' : 'succeeded',
+      pushError ? `飞书推送失败：${pushError}` : `飞书推送成功 ${pushed}/${recommendations.length}`,
+      progress.push
+    );
 
     return {
       aggregation: this.formatAggregationStats(aggregation),
@@ -332,12 +356,10 @@ export class RuntimeTaskRunner {
       ? {
         embedding: config.embedding,
         deepseek: config.deepseek,
-        grokBridge: config.grokBridge,
       }
       : {
         embedding: { apiKey: '', baseURL: '', model: '' },
         deepseek: { apiKey: '', baseURL: '' },
-        grokBridge: { url: '', token: '', timeoutMs: 180000 },
       };
 
     return {
@@ -350,11 +372,6 @@ export class RuntimeTaskRunner {
         apiKey: configForUser.ai.deepseek.apiKey || fallback.deepseek.apiKey,
         baseURL: configForUser.ai.deepseek.baseURL || fallback.deepseek.baseURL || 'https://api.deepseek.com',
       },
-      grokBridge: {
-        url: configForUser.ai.grokBridge.url || fallback.grokBridge.url || '',
-        token: configForUser.ai.grokBridge.token || fallback.grokBridge.token || '',
-        timeoutMs: configForUser.ai.grokBridge.timeoutMs || fallback.grokBridge.timeoutMs || 180000,
-      },
     };
   }
 
@@ -365,5 +382,18 @@ export class RuntimeTaskRunner {
       itemsSaved: stat.itemsSaved,
       errors: stat.errors,
     }));
+  }
+
+  private buildSummary(progress: RuntimeTaskProgress, result: RuntimeTaskResult): string {
+    const collected = progress.aggregation.reduce((sum, item) => sum + item.itemsCollected, 0);
+    const saved = progress.aggregation.reduce((sum, item) => sum + item.itemsSaved, 0);
+    const failedSources = progress.aggregation
+      .filter((item) => item.errors > 0)
+      .map((item) => item.source);
+    const drafts = progress.drafts?.drafts || 0;
+    const base = `抓到 ${collected} 条，入库 ${saved} 条，筛选出 ${result.recommendations} 条，生成 ${drafts} 个草稿，推送成功 ${result.pushed} 条`;
+    return failedSources.length > 0
+      ? `${base}；${failedSources.join('、')} 抓取失败`
+      : base;
   }
 }

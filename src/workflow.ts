@@ -18,7 +18,6 @@ import { DraftGenerator } from './generator/index.js';
 import { FeishuClient } from './feishu/index.js';
 import { EmbeddingClient } from './ai/embedding.js';
 import { DeepSeekClient } from './ai/deepseek.js';
-import { GrokBridgeClient } from './ai/grok-bridge.js';
 import { config, ensureDirectories, localRuntimeConfig, validateConfig } from './config.js';
 import { logger } from './utils/logger.js';
 
@@ -62,17 +61,7 @@ async function runCompleteWorkflow() {
     localRuntimeConfig.profilePath
   );
   const filterEngine = new FilterEngine(embeddingClient, deepseekClient, db);
-  const draftClient = config.grokBridge.url
-    ? new GrokBridgeClient(
-      config.grokBridge.url,
-      config.grokBridge.token,
-      config.grokBridge.timeoutMs
-    )
-    : deepseekClient;
-  const draftGenerator = new DraftGenerator(
-    draftClient,
-    config.grokBridge.url ? 'grok-bridge' : 'deepseek-chat'
-  );
+  const draftGenerator = new DraftGenerator(deepseekClient, 'deepseek-chat');
   const feishuClient = new FeishuClient(db);
 
   try {

@@ -1,6 +1,7 @@
 import { EmbeddingClient } from '../ai/embedding.js';
 import { DeepSeekClient } from '../ai/deepseek.js';
 import { DatabaseManager, ContentPool } from '../db/index.js';
+import { ContentItem } from '../types/content.js';
 import { AccountProfile } from '../profile/types.js';
 import { logger } from '../utils/logger.js';
 import { EmbeddingFilter } from './embedding-filter.js';
@@ -54,14 +55,20 @@ export class FilterEngine {
       };
     }
 
-    // 2. Embedding 初筛
+    // 2. Embedding 初筛，失败时降级为按新鲜度取候选
     const embeddingStart = Date.now();
-    const profileVector = this.getProfileVector(profile);
-    const candidates = await this.embeddingFilter.filter(recentContents, profileVector, opts.topK!);
+    let candidates: FilteredContent[] = [];
+    let embeddingFallbackReason = '';
+    try {
+      const profileVector = this.getProfileVector(profile);
+      candidates = await this.embeddingFilter.filter(recentContents, profileVector, opts.topK);
+      this.updateContentEmbeddings(recentContents);
+    } catch (error) {
+      embeddingFallbackReason = (error as Error).message;
+      logger.warn(`Embedding filter unavailable, falling back to recent content: ${embeddingFallbackReason}`);
+      candidates = this.fallbackCandidates(recentContents, opts.topK, embeddingFallbackReason);
+    }
     const embeddingDuration = Date.now() - embeddingStart;
-
-    // 更新数据库中的 embedding 向量（如果有新生成的）
-    await this.updateContentEmbeddings(recentContents);
 
     if (candidates.length === 0) {
       logger.warn('No candidates after embedding filter');
@@ -75,19 +82,21 @@ export class FilterEngine {
           embeddingDuration,
           aiDuration: 0,
           totalDuration: Date.now() - overallStart,
+          embeddingFallback: Boolean(embeddingFallbackReason),
+          embeddingFallbackReason,
         },
       };
     }
 
     // 3. AI 精排
     const aiStart = Date.now();
-    const ranked = await this.aiRanker.rank(candidates, profile, opts.minAiScore!);
+    const ranked = await this.aiRanker.rank(candidates, profile, opts.minAiScore);
     const aiDuration = Date.now() - aiStart;
 
     if (ranked.length === 0) {
       logger.warn(`No content passed AI ranking (minScore=${opts.minAiScore})`);
       // 如果 AI 精排没有结果，尝试降低阈值重试
-      if (opts.minAiScore! > 6.0) {
+      if (opts.minAiScore > 6.0) {
         logger.info('Retrying with lower threshold (6.0)');
         const retryRanked = await this.aiRanker.rank(candidates, profile, 6.0);
         if (retryRanked.length > 0) {
@@ -99,6 +108,8 @@ export class FilterEngine {
             embeddingDuration,
             aiDuration,
             overallStart,
+            embeddingFallback: Boolean(embeddingFallbackReason),
+            embeddingFallbackReason,
           });
         }
       }
@@ -116,6 +127,8 @@ export class FilterEngine {
       embeddingDuration,
       aiDuration,
       totalDuration,
+      embeddingFallback: Boolean(embeddingFallbackReason),
+      embeddingFallbackReason,
     };
 
     logger.info('=== Filter Engine Completed ===');
@@ -144,10 +157,47 @@ export class FilterEngine {
     return profile.interestVector;
   }
 
+  private fallbackCandidates(
+    contents: ContentPool[],
+    topK: number,
+    reason: string
+  ): FilteredContent[] {
+    return contents
+      .filter((content) => typeof content.id === 'number')
+      .sort((a, b) => this.contentTime(b) - this.contentTime(a))
+      .slice(0, topK)
+      .map((content, index) => ({
+        content: this.convertToContentItem(content),
+        contentId: content.id!,
+        embeddingSimilarity: 0,
+        aiReason: `Embedding 不可用，已降级按新鲜度筛选：${reason}`,
+        rank: index + 1,
+      }));
+  }
+
+  private contentTime(content: ContentPool): number {
+    const value = content.published_at || content.collected_at || '';
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? 0 : time;
+  }
+
+  private convertToContentItem(pool: ContentPool): FilteredContent['content'] {
+    return {
+      source: pool.source as ContentItem['source'],
+      title: pool.title || '',
+      content: pool.content,
+      url: pool.url || '',
+      author: pool.author,
+      publishedAt: pool.published_at ? new Date(pool.published_at) : new Date(),
+      metrics: pool.metrics ? JSON.parse(pool.metrics) as ContentItem['metrics'] : undefined,
+      collectedAt: pool.collected_at ? new Date(pool.collected_at) : new Date(),
+    };
+  }
+
   /**
    * 更新数据库中的 embedding 向量
    */
-  private async updateContentEmbeddings(contents: ContentPool[]): Promise<void> {
+  private updateContentEmbeddings(contents: ContentPool[]): void {
     let updated = 0;
     for (const content of contents) {
       if (content.embedding_vector && content.id) {
@@ -185,7 +235,7 @@ export class FilterEngine {
 
     // 3. 多样性控制
     if (options.enableDiversity) {
-      filtered = this.ensureDiversity(filtered, options.maxPerSource!);
+      filtered = this.ensureDiversity(filtered, options.maxPerSource);
     }
 
     // 4. 限制最终数量
@@ -304,6 +354,8 @@ export class FilterEngine {
       embeddingDuration: number;
       aiDuration: number;
       overallStart: number;
+      embeddingFallback?: boolean;
+      embeddingFallbackReason?: string;
     }
   ): { contents: FilteredContent[]; stats: FilterStats } {
     const filtered = this.applyFilters(ranked, options);

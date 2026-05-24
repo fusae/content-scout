@@ -61,13 +61,6 @@ export const config = {
     baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
   },
 
-  // Grok Bridge 配置（可选，用于推文草稿生成）
-  grokBridge: {
-    url: process.env.GROK_BRIDGE_URL || '',
-    token: process.env.GROK_BRIDGE_TOKEN || '',
-    timeoutMs: parseInt(process.env.GROK_BRIDGE_TIMEOUT_MS || '180000', 10),
-  },
-
   // X 账号配置
   xAccount: {
     handle: process.env.X_ACCOUNT_HANDLE || 'example_creator',
@@ -105,17 +98,6 @@ export const config = {
     appSecret: process.env.LARK_APP_SECRET || '',
     baseId: process.env.LARK_BASE_ID || '',
     defaultReceiverId: process.env.FEISHU_DEFAULT_RECEIVER_ID || '',
-  },
-
-  // Turing 单任务模式（用于把推荐转成写作任务）
-  turing: {
-    baseUrl: process.env.TURING_BASE_URL || '',
-    apiToken: process.env.TURING_API_TOKEN || '',
-    articleAgent: process.env.TURING_ARTICLE_AGENT || 'opencode',
-    articleCwd: process.env.TURING_ARTICLE_CWD || '',
-    articleRules:
-      process.env.TURING_ARTICLE_RULES ||
-      '按当前工作区已有写文工作流执行；完成后在 [RESULT]...[/RESULT] 中返回最终文章路径或结果摘要。',
   },
 
   // 速率限制配置
@@ -199,11 +181,6 @@ export function createLocalRuntimeConfig(): UserRuntimeConfig {
       deepseek: {
         apiKey: config.deepseek.apiKey,
         baseURL: config.deepseek.baseURL,
-      },
-      grokBridge: {
-        url: config.grokBridge.url,
-        token: config.grokBridge.token,
-        timeoutMs: config.grokBridge.timeoutMs,
       },
     },
     schedule: {

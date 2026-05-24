@@ -64,9 +64,6 @@ export class RuntimeConfigRepository {
     this.saveCredential(config.userId, 'embedding_model', config.ai.embedding.model);
     this.saveCredential(config.userId, 'deepseek_api_key', config.ai.deepseek.apiKey);
     this.saveCredential(config.userId, 'deepseek_base_url', config.ai.deepseek.baseURL);
-    this.saveCredential(config.userId, 'grok_bridge_url', config.ai.grokBridge.url);
-    this.saveCredential(config.userId, 'grok_bridge_token', config.ai.grokBridge.token);
-    this.saveCredential(config.userId, 'grok_bridge_timeout_ms', String(config.ai.grokBridge.timeoutMs || ''));
   }
 
   get(userId: string): UserRuntimeConfig | undefined {
@@ -103,11 +100,6 @@ export class RuntimeConfigRepository {
         deepseek: {
           apiKey: this.decryptCredential(credentials, 'deepseek_api_key'),
           baseURL: this.decryptCredential(credentials, 'deepseek_base_url'),
-        },
-        grokBridge: {
-          url: this.decryptCredential(credentials, 'grok_bridge_url'),
-          token: this.decryptCredential(credentials, 'grok_bridge_token'),
-          timeoutMs: Number(this.decryptCredential(credentials, 'grok_bridge_timeout_ms') || 0),
         },
       },
       schedule: {

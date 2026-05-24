@@ -74,11 +74,6 @@ export interface UserRuntimeConfig {
       apiKey: string;
       baseURL: string;
     };
-    grokBridge: {
-      url: string;
-      token: string;
-      timeoutMs: number;
-    };
   };
   lark: {
     appId: string;

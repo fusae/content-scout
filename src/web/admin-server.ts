@@ -394,10 +394,6 @@ class AdminServer {
         ...base.ai.deepseek,
         ...incoming.ai?.deepseek,
       },
-      grokBridge: {
-        ...base.ai.grokBridge,
-        ...incoming.ai?.grokBridge,
-      },
     };
     if (!incoming.ai?.embedding?.apiKey) {
       ai.embedding.apiKey = base.ai.embedding.apiKey;
@@ -405,10 +401,6 @@ class AdminServer {
     if (!incoming.ai?.deepseek?.apiKey) {
       ai.deepseek.apiKey = base.ai.deepseek.apiKey;
     }
-    if (!incoming.ai?.grokBridge?.token) {
-      ai.grokBridge.token = base.ai.grokBridge.token;
-    }
-    ai.grokBridge.timeoutMs = Number(ai.grokBridge.timeoutMs || base.ai.grokBridge.timeoutMs || 180000);
     if (!incoming.sources?.zhihu?.cookie) {
       sources.zhihu.cookie = base.sources.zhihu.cookie;
     }
@@ -467,11 +459,6 @@ class AdminServer {
           apiKey: runtimeConfig.ai.deepseek.apiKey || localRuntimeConfig.ai.deepseek.apiKey,
           baseURL: runtimeConfig.ai.deepseek.baseURL || localRuntimeConfig.ai.deepseek.baseURL,
         },
-        grokBridge: {
-          url: runtimeConfig.ai.grokBridge.url || localRuntimeConfig.ai.grokBridge.url,
-          token: runtimeConfig.ai.grokBridge.token || localRuntimeConfig.ai.grokBridge.token,
-          timeoutMs: runtimeConfig.ai.grokBridge.timeoutMs || localRuntimeConfig.ai.grokBridge.timeoutMs,
-        },
       },
     };
   }
@@ -523,11 +510,6 @@ class AdminServer {
           apiKey: '',
           baseURL: base.ai.deepseek.baseURL || 'https://api.deepseek.com',
         },
-        grokBridge: {
-          url: '',
-          token: '',
-          timeoutMs: base.ai.grokBridge.timeoutMs || 180000,
-        },
       },
       schedule: base.schedule,
       rateLimit: base.rateLimit,
@@ -545,13 +527,11 @@ class AdminServer {
       weiboCookie: Boolean(configForUser.sources.weibo.cookie),
       embeddingApiKey: Boolean(configForUser.ai.embedding.apiKey),
       deepseekApiKey: Boolean(configForUser.ai.deepseek.apiKey),
-      grokBridgeToken: Boolean(configForUser.ai.grokBridge.token),
     };
 
     clone.lark.appSecret = '';
     clone.ai.embedding.apiKey = '';
     clone.ai.deepseek.apiKey = '';
-    clone.ai.grokBridge.token = '';
     clone.sources.zhihu.cookie = '';
     clone.sources.douyin.cookie = '';
     clone.sources.douyin.tiktokDownloaderToken = '';
@@ -807,6 +787,14 @@ class AdminServer {
                 </div>
               </div>
 
+              <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="text-sm font-semibold text-gray-900">平台健康状态</h3>
+                  <span id="lastRunSummary" class="text-xs text-gray-500">等待运行</span>
+                </div>
+                <div id="platformHealthGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3"></div>
+              </div>
+
               <div class="flex space-x-3 mb-6">
                 <button onclick="runUser()" class="flex-1 btn-primary px-4 py-3 font-medium">
                   立即运行
@@ -872,20 +860,6 @@ class AdminServer {
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">DeepSeek Base URL</label>
                         <input id="configDeepseekBaseUrl" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://api.deepseek.com">
-                      </div>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Grok Bridge URL</label>
-                        <input id="configGrokBridgeUrl" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="http://127.0.0.1:4590">
-                      </div>
-                      <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Grok Bridge Token</label>
-                        <input id="configGrokBridgeToken" type="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="可选">
-                      </div>
-                      <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Grok 超时(ms)</label>
-                        <input id="configGrokBridgeTimeoutMs" type="number" min="1000" step="1000" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="180000">
                       </div>
                     </div>
                   </div>
@@ -1153,6 +1127,7 @@ class AdminServer {
     let selectedPlatformId = null;
     let logsRefreshTimer = null;
     let knownUserIds = new Set();
+    let latestRunStats = {};
     const tokenFromUrl = new URLSearchParams(window.location.search).get('token');
     if (tokenFromUrl) {
       localStorage.setItem('contentScoutAdminToken', tokenFromUrl);
@@ -1395,6 +1370,7 @@ class AdminServer {
       currentConfig = data;
       document.getElementById('userId').value = id;
       document.getElementById('config').value = JSON.stringify(data, null, 2);
+      latestRunStats = await loadLatestRunStats(id);
       updateOverview(data);
       updatePlatformStatus(data);
       loadConfigIntoForm(data);
@@ -1417,6 +1393,15 @@ class AdminServer {
       }
     }
 
+    async function loadLatestRunStats(id) {
+      try {
+        const runs = await request(\`/api/runs?userId=\${encodeURIComponent(id)}&limit=1\`);
+        return parseStats(runs[0]?.stats_json);
+      } catch {
+        return {};
+      }
+    }
+
     // Update overview
     function updateOverview(config) {
       const enabledSources = platforms.filter(platform => config.sources[platform.id]?.enabled);
@@ -1430,6 +1415,116 @@ class AdminServer {
         config.credentialStatus?.weiboCookie
       ].filter(Boolean).length;
       document.getElementById('connectionCount').textContent = \`\${connections}/4\`;
+      renderPlatformHealth(config);
+      document.getElementById('lastRunSummary').textContent = buildRunSummary(latestRunStats);
+    }
+
+    function renderPlatformHealth(config) {
+      const container = document.getElementById('platformHealthGrid');
+      if (!container) return;
+
+      const aggregation = Array.isArray(latestRunStats.aggregation) ? latestRunStats.aggregation : [];
+      const bySource = new Map(aggregation.map(item => [item.source, item]));
+
+      container.innerHTML = platforms.map(platform => {
+        const enabled = Boolean(config.sources[platform.id]?.enabled);
+        const hasAuth = platform.needsAuth === 'cookie'
+          ? Boolean(config.credentialStatus?.[\`\${platform.id}Cookie\`])
+          : true;
+        const stat = bySource.get(platform.id);
+        const health = platformHealth(platform, enabled, hasAuth, stat);
+
+        return \`
+          <div class="border \${health.border} \${health.bg} rounded-lg p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="h-2.5 w-2.5 rounded-full \${health.dot}"></span>
+                  <span class="font-medium text-gray-900 truncate">\${platform.name}</span>
+                </div>
+                <div class="mt-1 text-xs \${health.text}">\${health.message}</div>
+              </div>
+              \${health.action ? \`<button onclick="\${health.action}" class="shrink-0 text-xs font-medium text-blue-700 hover:text-blue-900">处理</button>\` : ''}
+            </div>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    function platformHealth(platform, enabled, hasAuth, stat) {
+      if (!enabled) {
+        return {
+          dot: 'bg-gray-300',
+          bg: 'bg-white',
+          border: 'border-gray-200',
+          text: 'text-gray-500',
+          message: '未启用',
+        };
+      }
+
+      if (!hasAuth) {
+        return {
+          dot: 'bg-blue-500',
+          bg: 'bg-blue-50',
+          border: 'border-blue-100',
+          text: 'text-blue-700',
+          message: '需要登录后才能抓取',
+          action: \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\`,
+        };
+      }
+
+      if (!stat) {
+        return {
+          dot: 'bg-blue-500',
+          bg: 'bg-blue-50',
+          border: 'border-blue-100',
+          text: 'text-blue-700',
+          message: '等待首次运行',
+        };
+      }
+
+      if (Number(stat.errors || 0) > 0) {
+        const needsLogin = platform.needsAuth === 'cookie';
+        return {
+          dot: 'bg-red-500',
+          bg: 'bg-red-50',
+          border: 'border-red-100',
+          text: 'text-red-700',
+          message: needsLogin ? '抓取失败，可能需要重新登录' : '抓取失败，稍后会自动重试',
+          action: needsLogin ? \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\` : '',
+        };
+      }
+
+      if (Number(stat.itemsCollected || 0) === 0) {
+        return {
+          dot: 'bg-yellow-500',
+          bg: 'bg-yellow-50',
+          border: 'border-yellow-100',
+          text: 'text-yellow-700',
+          message: '本次未抓到内容',
+        };
+      }
+
+      return {
+        dot: 'bg-green-500',
+        bg: 'bg-green-50',
+        border: 'border-green-100',
+        text: 'text-green-700',
+        message: \`本次抓到 \${Number(stat.itemsCollected || 0)} 条\`,
+      };
+    }
+
+    function buildRunSummary(stats) {
+      if (!stats || !Array.isArray(stats.aggregation)) {
+        return '等待运行';
+      }
+
+      const collected = stats.aggregation.reduce((sum, item) => sum + Number(item.itemsCollected || 0), 0);
+      const selected = stats.filtering?.selected ?? stats.result?.recommendations ?? 0;
+      const drafts = stats.drafts?.drafts ?? 0;
+      const failed = stats.aggregation.filter(item => Number(item.errors || 0) > 0).map(item => item.source);
+      const base = \`抓到 \${collected} 条，筛选 \${selected} 条，草稿 \${drafts} 个\`;
+      return failed.length ? \`\${base}；失败：\${failed.join('、')}\` : base;
     }
 
     // Update platform status
@@ -1599,8 +1694,6 @@ class AdminServer {
       document.getElementById('configEmbeddingBaseUrl').value = config.ai?.embedding?.baseURL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
       document.getElementById('configEmbeddingModel').value = config.ai?.embedding?.model || 'text-embedding-v4';
       document.getElementById('configDeepseekBaseUrl').value = config.ai?.deepseek?.baseURL || 'https://api.deepseek.com';
-      document.getElementById('configGrokBridgeUrl').value = config.ai?.grokBridge?.url || '';
-      document.getElementById('configGrokBridgeTimeoutMs').value = config.ai?.grokBridge?.timeoutMs || 180000;
       const embeddingApiKeyInput = document.getElementById('configEmbeddingApiKey');
       embeddingApiKeyInput.value = '';
       embeddingApiKeyInput.placeholder = config.credentialStatus?.embeddingApiKey
@@ -1611,11 +1704,6 @@ class AdminServer {
       deepseekApiKeyInput.placeholder = config.credentialStatus?.deepseekApiKey
         ? '已配置，留空保持不变'
         : 'DeepSeek API Key';
-      const grokBridgeTokenInput = document.getElementById('configGrokBridgeToken');
-      grokBridgeTokenInput.value = '';
-      grokBridgeTokenInput.placeholder = config.credentialStatus?.grokBridgeToken
-        ? '已配置，留空保持不变'
-        : '可选';
 
       // Sources
       document.getElementById('configZhihuKeywords').value = (config.sources?.zhihu?.keywords || []).join(', ');
@@ -1676,7 +1764,6 @@ class AdminServer {
         }
         const embeddingApiKey = document.getElementById('configEmbeddingApiKey').value;
         const deepseekApiKey = document.getElementById('configDeepseekApiKey').value;
-        const grokBridgeToken = document.getElementById('configGrokBridgeToken').value;
         const aiConfig = {
           embedding: {
             ...currentConfig.ai?.embedding,
@@ -1686,11 +1773,6 @@ class AdminServer {
           deepseek: {
             ...currentConfig.ai?.deepseek,
             baseURL: document.getElementById('configDeepseekBaseUrl').value
-          },
-          grokBridge: {
-            ...currentConfig.ai?.grokBridge,
-            url: document.getElementById('configGrokBridgeUrl').value,
-            timeoutMs: Number(document.getElementById('configGrokBridgeTimeoutMs').value || 180000)
           }
         };
         if (embeddingApiKey) {
@@ -1698,9 +1780,6 @@ class AdminServer {
         }
         if (deepseekApiKey) {
           aiConfig.deepseek.apiKey = deepseekApiKey;
-        }
-        if (grokBridgeToken) {
-          aiConfig.grokBridge.token = grokBridgeToken;
         }
         const sourcesConfig = {
           ...currentConfig.sources,
@@ -1889,6 +1968,12 @@ class AdminServer {
       try {
         const runs = await request(\`/api/runs?userId=\${encodeURIComponent(currentUserId)}&limit=20\`);
         document.getElementById('logs').innerHTML = renderRuns(runs);
+        if (runs.length) {
+          latestRunStats = parseStats(runs[0].stats_json);
+          if (currentConfig) {
+            updateOverview(currentConfig);
+          }
+        }
         if (logsRefreshTimer) {
           clearTimeout(logsRefreshTimer);
           logsRefreshTimer = null;

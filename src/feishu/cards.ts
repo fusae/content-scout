@@ -2,6 +2,9 @@ import { FilteredContent } from '../filter/types.js';
 import { Draft } from '../generator/types.js';
 import { CardActionValue } from './types.js';
 
+type CardElement = Record<string, unknown>;
+type LarkCard = Record<string, unknown>;
+
 /**
  * 飞书交互式卡片构建器
  */
@@ -13,8 +16,32 @@ export class CardBuilder {
     content: FilteredContent,
     drafts: Draft[],
     recommendationId: number
-  ): any {
+  ): LarkCard {
     const { content: contentItem, aiScore, aiReason } = content;
+    const hasDrafts = drafts.length > 0;
+    const draftElements: CardElement[] = hasDrafts
+      ? [
+        {
+          tag: 'div',
+          text: {
+            content: '**推文草稿：**',
+            tag: 'lark_md',
+          },
+        },
+        ...this.buildDraftElements(drafts, recommendationId, content.contentId),
+      ]
+      : [
+        {
+          tag: 'div',
+          text: {
+            content: '**草稿状态：**\n草稿生成服务暂时不可用，先保留这条推荐内容。',
+            tag: 'lark_md',
+          },
+        },
+      ];
+    const copyElements: CardElement[] = hasDrafts
+      ? [this.buildCopyActions(content.contentId, recommendationId)]
+      : [];
 
     return {
       config: {
@@ -61,83 +88,14 @@ export class CardBuilder {
         {
           tag: 'hr',
         },
-        // 草稿标题
-        {
-          tag: 'div',
-          text: {
-            content: '**推文草稿：**',
-            tag: 'lark_md',
-          },
-        },
-        // 草稿 1-3
-        ...this.buildDraftElements(drafts, recommendationId, content.contentId),
+        ...draftElements,
         {
           tag: 'hr',
         },
-        // 操作按钮
+        ...copyElements,
         {
           tag: 'action',
           actions: [
-            {
-              tag: 'button',
-              text: {
-                content: '📋 复制短版',
-                tag: 'plain_text',
-              },
-              type: 'primary',
-              value: {
-                action: 'copy',
-                draft_index: 0,
-                content_id: content.contentId,
-                recommendation_id: recommendationId,
-              } as CardActionValue,
-            },
-            {
-              tag: 'button',
-              text: {
-                content: '📋 复制中版',
-                tag: 'plain_text',
-              },
-              type: 'primary',
-              value: {
-                action: 'copy',
-                draft_index: 1,
-                content_id: content.contentId,
-                recommendation_id: recommendationId,
-              } as CardActionValue,
-            },
-            {
-              tag: 'button',
-              text: {
-                content: '📋 复制长版',
-                tag: 'plain_text',
-              },
-              type: 'primary',
-              value: {
-                action: 'copy',
-                draft_index: 2,
-                content_id: content.contentId,
-                recommendation_id: recommendationId,
-              } as CardActionValue,
-            },
-          ],
-        },
-        {
-          tag: 'action',
-          actions: [
-            {
-              tag: 'button',
-              text: {
-                content: '✍️ 写成文章',
-                tag: 'plain_text',
-              },
-              type: 'primary',
-              value: {
-                action: 'article',
-                content_id: content.contentId,
-                recommendation_id: recommendationId,
-              } as CardActionValue,
-            },
             {
               tag: 'button',
               text: {
@@ -166,6 +124,56 @@ export class CardBuilder {
     };
   }
 
+  private static buildCopyActions(contentId: number, recommendationId: number): CardElement {
+    return {
+      tag: 'action',
+      actions: [
+        {
+          tag: 'button',
+          text: {
+            content: '📋 复制短版',
+            tag: 'plain_text',
+          },
+          type: 'primary',
+          value: {
+            action: 'copy',
+            draft_index: 0,
+            content_id: contentId,
+            recommendation_id: recommendationId,
+          } as CardActionValue,
+        },
+        {
+          tag: 'button',
+          text: {
+            content: '📋 复制中版',
+            tag: 'plain_text',
+          },
+          type: 'primary',
+          value: {
+            action: 'copy',
+            draft_index: 1,
+            content_id: contentId,
+            recommendation_id: recommendationId,
+          } as CardActionValue,
+        },
+        {
+          tag: 'button',
+          text: {
+            content: '📋 复制长版',
+            tag: 'plain_text',
+          },
+          type: 'primary',
+          value: {
+            action: 'copy',
+            draft_index: 2,
+            content_id: contentId,
+            recommendation_id: recommendationId,
+          } as CardActionValue,
+        },
+      ],
+    };
+  }
+
   /**
    * 构建草稿元素
    */
@@ -173,8 +181,8 @@ export class CardBuilder {
     drafts: Draft[],
     _recommendationId: number,
     _contentId: number
-  ): any[] {
-    const elements: any[] = [];
+  ): CardElement[] {
+    const elements: CardElement[] = [];
 
     drafts.forEach((draft, index) => {
       const styleLabel = this.getStyleLabel(draft.style);
@@ -226,7 +234,7 @@ export class CardBuilder {
   /**
    * 构建批量推荐摘要卡片
    */
-  static buildBatchSummaryCard(count: number): any {
+  static buildBatchSummaryCard(count: number): LarkCard {
     return {
       config: {
         wide_screen_mode: true,
@@ -242,7 +250,7 @@ export class CardBuilder {
         {
           tag: 'div',
           text: {
-            content: `为你精选了 **${count}** 条优质内容，每条都附带短/中/长 3 个推文草稿。\n\n你可以直接复制发布，也可以把合适的话题一键转成文章任务。`,
+            content: `为你精选了 **${count}** 条内容。草稿服务可用时会附带短/中/长 3 个版本；如果草稿生成失败，会先推送推荐内容。`,
             tag: 'lark_md',
           },
         },
@@ -253,7 +261,7 @@ export class CardBuilder {
   /**
    * 构建反馈确认卡片
    */
-  static buildFeedbackCard(action: 'accepted' | 'rejected', draftIndex?: number): any {
+  static buildFeedbackCard(action: 'accepted' | 'rejected', draftIndex?: number): LarkCard {
     const messages = {
       accepted: `✅ ${this.getDraftIndexLabel(draftIndex)}已复制！\n\n去 X 发布吧。`,
       rejected: '👌 已记录你的反馈！\n\n我们会根据你的偏好优化后续推荐。',

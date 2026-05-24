@@ -75,10 +75,13 @@ export class ProfileManager {
         sampleTweets: initialData.sampleTweets,
       };
 
-      // 生成 embedding 向量
-      logger.info('Generating embedding vector...');
-      const vector = await this.vectorizer.vectorizeProfile(profile);
-      profile.interestVector = vector;
+      try {
+        logger.info('Generating embedding vector...');
+        const vector = await this.vectorizer.vectorizeProfile(profile);
+        profile.interestVector = vector;
+      } catch (error) {
+        logger.warn('Profile vector unavailable, continuing without embedding vector', error as Error);
+      }
 
       // 存储到数据库
       this.saveProfileToDatabase(profile);
@@ -144,9 +147,14 @@ export class ProfileManager {
 
       // 如果主题或兴趣有变化，重新生成向量
       if (updates.topics || updates.interests || updates.audience || updates.bio) {
-        logger.info('Topics/interests changed, regenerating vector...');
-        const vector = await this.vectorizer.refreshVector(updated);
-        updated.interestVector = vector;
+        try {
+          logger.info('Topics/interests changed, regenerating vector...');
+          const vector = await this.vectorizer.refreshVector(updated);
+          updated.interestVector = vector;
+        } catch (error) {
+          logger.warn('Profile vector refresh failed, keeping previous vector', error as Error);
+          updated.interestVector = current.interestVector;
+        }
       }
 
       // 保存到数据库

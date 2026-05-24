@@ -2,14 +2,12 @@ import { DatabaseManager } from '../db/index.js';
 import { CardActionCallback, CardActionValue } from './types.js';
 import { LarkClient } from './client.js';
 import { logger } from '../utils/logger.js';
-import { TuringClient } from '../turing/client.js';
+import { Draft } from '../generator/types.js';
 
 /**
  * 飞书卡片交互处理器
  */
 export class CardActionHandler {
-  private turingClient = new TuringClient();
-
   constructor(
     private larkClient: LarkClient,
     private db: DatabaseManager
@@ -32,9 +30,6 @@ export class CardActionHandler {
           break;
         case 'reject':
           await this.handleReject(open_id, action);
-          break;
-        case 'article':
-          await this.handleWriteArticle(open_id, action);
           break;
         default:
           logger.warn(`Unknown action type: ${action.action}`);
@@ -71,7 +66,7 @@ export class CardActionHandler {
       throw new Error(`Recommendation ${recommendation_id} not found`);
     }
 
-    const drafts = recommendation.drafts ? JSON.parse(recommendation.drafts) : [];
+    const drafts = recommendation.drafts ? JSON.parse(recommendation.drafts) as Draft[] : [];
     const selectedDraft = drafts[draft_index];
 
     if (!selectedDraft) {
@@ -122,42 +117,6 @@ export class CardActionHandler {
     );
 
     logger.info(`Recommendation ${recommendation_id} rejected`);
-  }
-
-  /**
-   * 处理写成文章
-   */
-  private async handleWriteArticle(openId: string, action: CardActionValue): Promise<void> {
-    const { recommendation_id, content_id } = action;
-
-    if (!recommendation_id || !content_id) {
-      throw new Error('Missing recommendation_id or content_id');
-    }
-
-    const recommendation = this.db.getRecommendationById(recommendation_id);
-    if (!recommendation) {
-      throw new Error(`Recommendation ${recommendation_id} not found`);
-    }
-
-    const content = this.db.getContentById(content_id);
-    if (!content) {
-      throw new Error(`Content ${content_id} not found`);
-    }
-
-    const task = await this.turingClient.createArticleTask(recommendation, content);
-
-    this.db.insertFeedback({
-      recommendation_id,
-      action: 'article_requested',
-      modified_draft: task.id,
-    });
-
-    await this.larkClient.sendText(
-      openId,
-      `✍️ 已提交写作任务\n\n任务 ID：${task.id}`
-    );
-
-    logger.info(`Article task ${task.id} created for recommendation ${recommendation_id}`);
   }
 
   /**

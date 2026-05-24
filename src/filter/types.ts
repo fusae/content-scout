@@ -57,4 +57,6 @@ export interface FilterStats {
   embeddingDuration: number; // Embedding 耗时 (ms)
   aiDuration: number; // AI 精排耗时 (ms)
   totalDuration: number; // 总耗时 (ms)
+  embeddingFallback?: boolean;
+  embeddingFallbackReason?: string;
 }
