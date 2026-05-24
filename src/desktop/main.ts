@@ -1,12 +1,13 @@
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
 import { spawn, type ChildProcess } from 'child_process';
 import { createServer, get as httpGet } from 'http';
-import { mkdirSync } from 'fs';
+import { createWriteStream, mkdirSync } from 'fs';
 import { join } from 'path';
 
 let mainWindow: BrowserWindow | null = null;
 let adminProcess: ChildProcess | null = null;
 let adminUrl = '';
+let adminLogPath = '';
 let isQuitting = false;
 
 async function findFreePort(): Promise<number> {
@@ -69,6 +70,7 @@ function runtimeEnv(port: number): NodeJS.ProcessEnv {
   if (app.isPackaged) {
     const runtimeDir = join(app.getPath('userData'), 'runtime');
     mkdirSync(runtimeDir, { recursive: true });
+    adminLogPath = join(runtimeDir, 'desktop-admin.log');
     env.DB_PATH ||= join(runtimeDir, 'scout.db');
     env.LOG_FILE ||= join(runtimeDir, 'app.log');
     env.LOCAL_LOGIN_PROFILE_DIR ||= join(runtimeDir, 'browser-profiles');
@@ -91,8 +93,18 @@ function startAdminServer(port: number): void {
   adminProcess = spawn(command, [serverScriptPath()], {
     cwd: app.isPackaged ? app.getPath('userData') : app.getAppPath(),
     env: childEnv,
-    stdio: app.isPackaged ? 'ignore' : 'inherit',
+    stdio: app.isPackaged ? ['ignore', 'pipe', 'pipe'] : 'inherit',
   });
+
+  if (app.isPackaged && adminLogPath) {
+    const logStream = createWriteStream(adminLogPath, { flags: 'a' });
+    logStream.write(`\n--- ${new Date().toISOString()} ---\n`);
+    adminProcess.stdout?.pipe(logStream, { end: false });
+    adminProcess.stderr?.pipe(logStream, { end: false });
+    adminProcess.once('exit', () => {
+      logStream.end();
+    });
+  }
 
   adminProcess.once('exit', (code) => {
     adminProcess = null;
@@ -101,7 +113,10 @@ function startAdminServer(port: number): void {
         type: 'error',
         title: 'Content Scout',
         message: '后台服务已退出',
-        detail: code === null ? '进程被终止。' : `退出码：${code}`,
+        detail: [
+          code === null ? '进程被终止。' : `退出码：${code}`,
+          adminLogPath ? `日志：${adminLogPath}` : '',
+        ].filter(Boolean).join('\n'),
       });
     }
   });
