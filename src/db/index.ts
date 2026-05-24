@@ -510,6 +510,31 @@ export class DatabaseManager {
     return stmt.all(limit) as RuntimeJobRecord[];
   }
 
+  markInterruptedRuntimeWork(reason: string): { jobs: number; runs: number } {
+    const failJobs = this.db.prepare(`
+      UPDATE runtime_jobs
+      SET status = 'failed',
+          last_error = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE status = 'running'
+    `);
+    const failRuns = this.db.prepare(`
+      UPDATE runtime_run_logs
+      SET status = 'failed',
+          finished_at = COALESCE(finished_at, CURRENT_TIMESTAMP),
+          message = '运行中断',
+          error = COALESCE(error, ?)
+      WHERE status = 'running'
+    `);
+
+    const transaction = this.db.transaction(() => ({
+      jobs: failJobs.run(reason).changes,
+      runs: failRuns.run(reason).changes,
+    }));
+
+    return transaction();
+  }
+
   insertRuntimeRunLog(log: RuntimeRunLogRecord): number {
     const stmt = this.db.prepare(`
       INSERT INTO runtime_run_logs (user_id, job_type, status, message, stats_json, error)
@@ -541,6 +566,25 @@ export class DatabaseManager {
       options.message || null,
       options.statsJson || null,
       options.error || null,
+      id
+    );
+  }
+
+  updateRuntimeRunLog(
+    id: number,
+    options: { message?: string; statsJson?: string; error?: string }
+  ): void {
+    const stmt = this.db.prepare(`
+      UPDATE runtime_run_logs
+      SET message = COALESCE(?, message),
+          stats_json = COALESCE(?, stats_json),
+          error = COALESCE(?, error)
+      WHERE id = ?
+    `);
+    stmt.run(
+      options.message ?? null,
+      options.statsJson ?? null,
+      options.error ?? null,
       id
     );
   }

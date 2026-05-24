@@ -21,6 +21,11 @@ export class RuntimeWorker {
       return;
     }
 
+    const recovered = this.queue.markInterrupted('Worker restarted before this job finished');
+    if (recovered.jobs > 0 || recovered.runs > 0) {
+      logger.warn(`Marked interrupted runtime work as failed: ${recovered.jobs} jobs, ${recovered.runs} runs`);
+    }
+
     this.timer = setInterval(() => {
       void this.processNext();
     }, this.pollIntervalMs);

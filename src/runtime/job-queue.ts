@@ -33,4 +33,8 @@ export class RuntimeJobQueue {
   list(limit: number = 50): RuntimeJobRecord[] {
     return this.db.listRuntimeJobs(limit);
   }
+
+  markInterrupted(reason: string): { jobs: number; runs: number } {
+    return this.db.markInterruptedRuntimeWork(reason);
+  }
 }
