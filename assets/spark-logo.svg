@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Spark logo">
+<defs>
+  <linearGradient id="sparkFlame" x1="310" y1="820" x2="680" y2="120" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ff4b00"/>
+    <stop offset="0.48" stop-color="#ff8a00"/>
+    <stop offset="1" stop-color="#ffd500"/>
+  </linearGradient>
+  <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+    <feDropShadow dx="0" dy="22" stdDeviation="18" flood-color="#f59e0b" flood-opacity=".18"/>
+  </filter>
+</defs>
+<g filter="url(#softShadow)" fill="url(#sparkFlame)">
+  <path d="M512 824 C444 724 430 642 462 563 C498 473 548 404 552 306 C556 238 527 169 527 169 C637 333 607 454 545 538 C493 609 488 708 512 824Z"/>
+  <path d="M527 734 C514 637 571 569 650 511 C714 464 748 397 747 331 C785 470 724 589 640 672 C588 724 553 779 512 824Z"/>
+  <path d="M405 590 C401 494 452 405 493 330 C431 388 383 462 381 547 C380 610 406 655 434 696 C412 640 407 615 405 590Z"/>
+  <path d="M357 542 C361 605 379 649 417 716 C373 684 342 619 340 481 C352 505 376 533 357 542Z"/>
+  <path d="M286 620 L421 744 L371 661 L286 620Z"/>
+  <path d="M399 770 L498 812 L419 724 L399 770Z"/>
+  <path d="M608 724 L716 602 L677 676 L608 724Z"/>
+  <path d="M603 800 L777 693 L679 721 L603 800Z"/>
+  <path d="M699 652 L761 564 L710 598 L699 652Z"/>
+</g>
+</svg>

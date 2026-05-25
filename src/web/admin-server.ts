@@ -77,6 +77,11 @@ class AdminServer {
     const method = req.method || 'GET';
 
     try {
+      if (method === 'GET' && (url.pathname.startsWith('/assets/') || url.pathname === '/favicon.ico')) {
+        this.asset(res, url.pathname);
+        return;
+      }
+
       if (!this.isAuthorized(req, url)) {
         this.unauthorized(res);
         return;
@@ -697,6 +702,10 @@ class AdminServer {
     this.json(res, { error: 'Unauthorized' }, 401);
   }
 
+  private notFound(res: ServerResponse): void {
+    this.json(res, { error: 'Not found' }, 404);
+  }
+
   private isLoopbackHost(host: string): boolean {
     return ['127.0.0.1', 'localhost', '::1'].includes(host);
   }
@@ -740,6 +749,35 @@ class AdminServer {
     res.end(payload);
   }
 
+  private asset(res: ServerResponse, pathname: string): void {
+    const fileName = pathname === '/favicon.ico' ? 'spark-icon-32.png' : pathname.replace('/assets/', '');
+    if (!/^[a-z0-9_.-]+$/i.test(fileName)) {
+      this.notFound(res);
+      return;
+    }
+
+    const filePath = [
+      resolve(process.cwd(), 'assets', fileName),
+      resolve(__dirname, '..', '..', 'assets', fileName),
+    ].find((candidate) => existsSync(candidate));
+    if (!filePath) {
+      this.notFound(res);
+      return;
+    }
+
+    const ext = fileName.split('.').pop() || '';
+    const contentTypes: Record<string, string> = {
+      png: 'image/png',
+      svg: 'image/svg+xml; charset=utf-8',
+      icns: 'image/icns',
+    };
+    res.writeHead(200, {
+      'content-type': contentTypes[ext] || 'application/octet-stream',
+      'cache-control': 'public, max-age=86400',
+    });
+    res.end(readFileSync(filePath));
+  }
+
   private renderOnboarding(): string {
     const path = resolve(__dirname, 'onboarding.html');
     return readFileSync(path, 'utf8');
@@ -752,6 +790,8 @@ class AdminServer {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Spark - 管理后台</title>
+  <link rel="icon" type="image/png" href="/assets/spark-icon-32.png">
+  <link rel="apple-touch-icon" href="/assets/spark-icon.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     [x-cloak] { display: none !important; }
@@ -805,7 +845,8 @@ class AdminServer {
   <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between items-center h-16">
-        <div class="flex items-center">
+        <div class="flex items-center gap-3">
+          <img src="/assets/spark-logo.svg" alt="" class="h-9 w-9">
           <h1 class="text-xl font-bold text-gray-900">Spark</h1>
           <span class="ml-3 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">管理后台</span>
         </div>

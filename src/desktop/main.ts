@@ -85,6 +85,10 @@ function serverScriptPath(): string {
   return join(app.getAppPath(), 'dist', 'web', 'admin-server.js');
 }
 
+function appIconPath(): string {
+  return join(app.getAppPath(), 'assets', 'spark-icon.png');
+}
+
 function startAdminServer(port: number): void {
   const env = runtimeEnv(port);
   const command = app.isPackaged ? process.execPath : 'node';
@@ -185,6 +189,7 @@ async function createWindow(): Promise<void> {
     minWidth: 1080,
     minHeight: 720,
     title: 'Spark',
+    icon: appIconPath(),
     backgroundColor: '#f5f7fb',
     webPreferences: {
       contextIsolation: true,
@@ -211,6 +216,9 @@ app.on('before-quit', () => {
 
 app.whenReady()
   .then(async () => {
+    if (process.platform === 'darwin') {
+      app.dock?.setIcon(appIconPath());
+    }
     createMenu();
     await createWindow();
   })

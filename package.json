@@ -31,19 +31,22 @@
   ],
   "author": "",
   "license": "MIT",
-  "build": {
+    "build": {
     "appId": "app.spark.local",
     "productName": "Spark",
+    "icon": "assets/spark-icon.png",
     "asar": false,
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
+      "assets/**/*",
       "package.json",
       "node_modules/**/*"
     ],
     "mac": {
+      "icon": "assets/spark-icon.icns",
       "target": [
         "dmg",
         "zip"
