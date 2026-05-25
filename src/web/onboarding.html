@@ -34,17 +34,35 @@
     .secondary { background: white; color: #374151; border: 1px solid #d1d5db; }
     .secondary:hover { background: #f9fafb; }
     .muted-card { background: #fafaf7; border: 1px solid #e5e7eb; }
+    .value-card { background: #ffffff; border: 1px solid #e4e7df; }
+    .soft-note { background: #f0f7ed; border: 1px solid #cfe5c6; }
   </style>
 </head>
 <body>
   <main class="mx-auto max-w-6xl px-4 py-6 md:py-10">
-    <header class="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <header class="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
       <div>
-        <div class="text-sm font-semibold text-green-800">Content Scout</div>
-        <h1 class="mt-1 text-3xl font-bold text-gray-950">首次设置</h1>
+        <div class="text-base font-bold text-green-800">Content Scout</div>
+        <h1 class="mt-1 max-w-2xl text-3xl font-bold text-gray-950">每天自动帮你找选题、筛重点、写草稿</h1>
+        <p class="mt-3 max-w-3xl text-base text-gray-600">设置一次，以后打开应用就能看到从多个平台抓来的灵感、推荐理由和可直接改写的草稿。</p>
       </div>
       <a href="/dashboard" class="text-sm font-medium text-gray-600 hover:text-gray-950">进入完整设置</a>
     </header>
+
+    <section class="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div class="value-card rounded-lg p-4">
+        <div class="text-sm font-bold text-green-800">1. 找灵感</div>
+        <p class="mt-1 text-sm text-gray-600">每天从你选的平台抓热门内容。</p>
+      </div>
+      <div class="value-card rounded-lg p-4">
+        <div class="text-sm font-bold text-green-800">2. 筛重点</div>
+        <p class="mt-1 text-sm text-gray-600">按你的领域和受众挑出最值得看的。</p>
+      </div>
+      <div class="value-card rounded-lg p-4">
+        <div class="text-sm font-bold text-green-800">3. 写草稿</div>
+        <p class="mt-1 text-sm text-gray-600">生成短、中、长三种版本，方便你审核发布。</p>
+      </div>
+    </section>
 
     <section class="mb-6 rounded-lg border border-gray-200 bg-white p-3">
       <div id="progress" class="grid grid-cols-5 gap-2 text-xs md:text-sm"></div>
@@ -68,9 +86,9 @@
         <h2 class="mt-1 text-2xl font-bold">从哪里找灵感？</h2>
         <p class="mt-2 text-gray-600">打开你感兴趣的平台。标了“需登录”的平台，下一步可以连接。</p>
         <div class="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <label class="text-sm font-medium text-gray-800" for="topicInput">搜你感兴趣的话题</label>
+          <label class="text-sm font-medium text-gray-800" for="topicInput">你想关注哪些话题？</label>
           <div class="mt-2 flex flex-col gap-2 md:flex-row">
-            <input id="topicInput" class="min-h-11 flex-1 rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="例如：AI Agent, 创业, 出海">
+            <input id="topicInput" class="min-h-11 flex-1 rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="例如：爆款选题, 内容增长, 热点观察">
             <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="saveTopics()">保存话题</button>
           </div>
           <p id="topicSaveState" class="mt-2 text-xs text-gray-500">这些词会用于支持搜索的平台。</p>
@@ -85,7 +103,7 @@
       <div id="step-3" class="step-panel">
         <p class="text-sm font-semibold text-green-800">Step 3</p>
         <h2 class="mt-1 text-2xl font-bold">连接平台</h2>
-        <p class="mt-2 text-gray-600">让系统能登录这些平台，帮你看内容。</p>
+        <p class="mt-2 text-gray-600">让系统能登录这些平台，帮你看内容。点击登录后会打开新窗口，请在里面完成登录或扫码，完成后回到这里。</p>
         <div id="loginGrid" class="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2"></div>
         <div class="mt-8 flex justify-between gap-3">
           <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(2)">上一步</button>
@@ -95,8 +113,17 @@
 
       <div id="step-4" class="step-panel">
         <p class="text-sm font-semibold text-green-800">Step 4</p>
-        <h2 class="mt-1 text-2xl font-bold">接入 AI</h2>
-        <p class="mt-2 text-gray-600">两个服务各干各的。都接上效果最好，只接一个也能跑。</p>
+        <h2 class="mt-1 text-2xl font-bold">AI 可以稍后再接</h2>
+        <p class="mt-2 text-gray-600">不填也能先跑一遍，看到每天抓回来的内容。接上后，Content Scout 会自动筛重点和写草稿。</p>
+        <div class="soft-note mt-5 rounded-lg p-4">
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div class="font-semibold text-green-950">推荐先跑起来</div>
+              <p class="mt-1 text-sm text-green-900">不想现在注册服务，可以直接跳过。之后在完整设置里随时补上。</p>
+            </div>
+            <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="nextFromAi()">跳过 AI，继续</button>
+          </div>
+        </div>
         <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div id="embeddingCard" class="rounded-lg border border-gray-200 bg-white p-5">
             <div class="flex items-start justify-between gap-3">
@@ -104,10 +131,14 @@
                 <h3 class="text-lg font-bold">内容筛选</h3>
                 <p class="mt-2 text-sm text-gray-600">从每天抓到的内容里，挑出你最可能感兴趣的。</p>
               </div>
-              <span id="embeddingStatus" class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">未接入</span>
+              <div class="flex flex-col items-end gap-2">
+                <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">可选</span>
+                <span id="embeddingStatus" class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">未接入</span>
+              </div>
             </div>
-            <a class="mt-4 inline-flex text-sm font-medium text-green-800 hover:text-green-950" href="https://dashscope.console.aliyun.com" target="_blank" rel="noreferrer">去阿里云百炼申请免费额度 ↗</a>
-            <input id="embeddingKey" type="password" class="mt-4 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴访问密钥">
+            <p class="mt-4 text-sm text-gray-600">有阿里云百炼账号时再填。没有也可以先跳过。</p>
+            <a class="mt-3 inline-flex text-sm font-medium text-green-800 hover:text-green-950" href="https://dashscope.console.aliyun.com" target="_blank" rel="noreferrer">打开百炼控制台 ↗</a>
+            <input id="embeddingKey" type="password" class="mt-4 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴密钥">
             <button class="mt-3 primary rounded-md px-4 py-2 text-sm font-medium" onclick="saveAiKey('embedding')">保存内容筛选</button>
           </div>
 
@@ -117,10 +148,14 @@
                 <h3 class="text-lg font-bold">内容创作</h3>
                 <p class="mt-2 text-sm text-gray-600">根据筛选出来的好内容，帮你写草稿。</p>
               </div>
-              <span id="deepseekStatus" class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">未接入</span>
+              <div class="flex flex-col items-end gap-2">
+                <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">可选</span>
+                <span id="deepseekStatus" class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">未接入</span>
+              </div>
             </div>
-            <a class="mt-4 inline-flex text-sm font-medium text-green-800 hover:text-green-950" href="https://platform.deepseek.com" target="_blank" rel="noreferrer">去 DeepSeek 申请 ↗</a>
-            <input id="deepseekKey" type="password" class="mt-4 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴访问密钥">
+            <p class="mt-4 text-sm text-gray-600">接上后才会生成短、中、长三种草稿。</p>
+            <a class="mt-3 inline-flex text-sm font-medium text-green-800 hover:text-green-950" href="https://platform.deepseek.com" target="_blank" rel="noreferrer">打开 DeepSeek 控制台 ↗</a>
+            <input id="deepseekKey" type="password" class="mt-4 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴密钥">
             <button class="mt-3 primary rounded-md px-4 py-2 text-sm font-medium" onclick="saveAiKey('deepseek')">保存内容创作</button>
           </div>
         </div>
@@ -152,20 +187,23 @@
           </button>
         </div>
         <div id="larkForm" class="mt-5 hidden rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <div class="mb-4 rounded-md bg-white p-3 text-sm text-gray-700">
+            不会配飞书也没关系，选“就在应用里看”，推荐结果会保存在这里。
+          </div>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <label class="text-sm font-medium">App ID
-              <input id="larkAppId" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none">
+            <label class="text-sm font-medium">飞书机器人编号
+              <input id="larkAppId" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="从飞书机器人页面复制">
             </label>
-            <label class="text-sm font-medium">App Secret
-              <input id="larkAppSecret" type="password" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none">
+            <label class="text-sm font-medium">飞书机器人密钥
+              <input id="larkAppSecret" type="password" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="同一页复制">
             </label>
-            <label class="text-sm font-medium">接收人
-              <input id="larkReceiver" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="open_id 或 chat_id">
+            <label class="text-sm font-medium">发给谁
+              <input id="larkReceiver" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴用户或群的标识">
             </label>
           </div>
           <details class="mt-3 text-sm text-gray-600">
             <summary class="cursor-pointer font-medium text-gray-800">怎么找</summary>
-            <p class="mt-2">App ID 和 Secret 在飞书开放平台应用凭证里；接收人可以填单聊 open_id 或群 chat_id。</p>
+            <p class="mt-2">先在飞书创建一个机器人应用，在“凭证与基础信息”里复制编号和密钥。接收对象可以之后补，当前先选“就在应用里看”也能正常使用。</p>
           </details>
         </div>
         <div class="mt-8 flex justify-between gap-3">
@@ -177,6 +215,7 @@
       <div id="step-6" class="step-panel">
         <p class="text-sm font-semibold text-green-800">完成</p>
         <h2 class="mt-1 text-2xl font-bold">你的灵感引擎已就绪！</h2>
+        <p class="mt-2 text-gray-600">以后打开 Content Scout，就能在这里看每日推荐、运行日志和平台状态。</p>
         <div id="finishSummary" class="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-5 text-sm text-gray-800"></div>
         <div class="mt-6 flex flex-col gap-3 md:flex-row">
           <select id="scheduleSelect" class="min-h-11 rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" onchange="saveSchedule()">
@@ -203,13 +242,16 @@
       history.replaceState(null, '', location.pathname);
     }
     const adminToken = localStorage.getItem('contentScoutAdminToken') || '';
+    const onboardingStateKey = `contentScoutOnboarding:${userId}`;
+    const savedOnboardingState = readOnboardingState();
     let currentConfig = null;
-    let currentStep = 1;
-    let selectedPersona = '';
-    let selectedDelivery = 'app';
-    let skippedLogins = new Set();
+    let currentStep = Number(savedOnboardingState.step || 1);
+    let selectedPersona = savedOnboardingState.persona || '';
+    let selectedDelivery = savedOnboardingState.delivery || 'app';
+    let skippedLogins = new Set(savedOnboardingState.skippedLogins || []);
+    let loginStatus = {};
 
-    const steps = ['你是谁', '灵感来源', '连接平台', '接入 AI', '推送设置'];
+    const steps = ['你是谁', '灵感来源', '连接平台', 'AI 可选', '推送设置'];
     const authPlatforms = ['zhihu', 'weibo', 'douyin', 'xiaohongshu'];
     const searchablePlatforms = ['zhihu', 'weibo', 'douyin', 'xiaohongshu'];
     const sourceDefaults = {
@@ -242,6 +284,7 @@
         tone: '轻松口语化',
         sources: ['weibo', 'douyin', 'xiaohongshu', 'zhihu'],
         draft: '短帖 + 话题标签',
+        examples: '例如：爆款选题, 内容增长, 热点观察',
         profile: {
           bio: '关注中文互联网、AI 工具和创作者经济的社交媒体创作者。',
           topics: ['AI 工具', '社交媒体', '创作者经济', '热点观察'],
@@ -257,6 +300,7 @@
         tone: '专业深度',
         sources: ['hackernews', 'github', 'reddit', 'v2ex', 'zhihu'],
         draft: '选题大纲 + 摘要',
+        examples: '例如：AI Agent, 开源项目, 软件工程',
         profile: {
           bio: '长期写技术、产品和行业分析的深度写作者。',
           topics: ['AI', '软件工程', '产品策略', '技术趋势'],
@@ -272,6 +316,7 @@
         tone: '画面感强',
         sources: ['douyin', 'xiaohongshu', 'weibo', 'reddit'],
         draft: '脚本框架 + 分镜提示',
+        examples: '例如：短视频选题, 职场效率, 热门话题',
         profile: {
           bio: '面向短视频平台选题和脚本创作的内容创作者。',
           topics: ['AI 应用', '短视频', '职场效率', '消费科技'],
@@ -287,6 +332,7 @@
         tone: '通用',
         sources: ['hackernews', 'github', 'v2ex', 'reddit', 'zhihu', 'weibo', 'douyin', 'xiaohongshu'],
         draft: '标准三种长度',
+        examples: '例如：AI 工具, 创业, 产品趋势',
         profile: {
           bio: '关注 AI、科技、产品和互联网趋势的内容创作者。',
           topics: ['AI', '科技趋势', '产品', '互联网'],
@@ -298,11 +344,37 @@
       }
     };
 
+    function readOnboardingState() {
+      try {
+        return JSON.parse(localStorage.getItem(onboardingStateKey) || '{}');
+      } catch {
+        return {};
+      }
+    }
+
+    function persistOnboardingState() {
+      localStorage.setItem(onboardingStateKey, JSON.stringify({
+        step: currentStep,
+        persona: selectedPersona,
+        delivery: selectedDelivery,
+        skippedLogins: Array.from(skippedLogins),
+      }));
+    }
+
     function showToast(message) {
       const toast = document.getElementById('toast');
       toast.textContent = message;
       toast.classList.remove('hidden');
       setTimeout(() => toast.classList.add('hidden'), 2200);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     async function request(path, options = {}) {
@@ -405,11 +477,24 @@
           <p class="mt-1 text-sm text-gray-600">草稿：${item.draft}</p>
         </button>
       `).join('');
+      document.getElementById('nextFromPersona').disabled = !selectedPersona;
+      const preview = document.getElementById('personaPreview');
+      if (selectedPersona) {
+        const persona = personas[selectedPersona];
+        preview.classList.remove('hidden');
+        preview.textContent = `你将获得：每天从 ${persona.sources.length} 个平台搜集灵感，生成 3 种长度的草稿，推送到你选择的地方。`;
+      } else {
+        preview.classList.add('hidden');
+      }
     }
 
     function renderSourceGrid() {
       const keywords = currentConfig.sources.zhihu.keywords || [];
-      document.getElementById('topicInput').value = keywords.join(', ');
+      const topicInput = document.getElementById('topicInput');
+      topicInput.value = keywords.join(', ');
+      topicInput.placeholder = selectedPersona && personas[selectedPersona]?.examples
+        ? personas[selectedPersona].examples
+        : '例如：爆款选题, 内容增长, 热点观察';
       document.getElementById('sourceGrid').innerHTML = visibleSources.map((id) => {
         const platform = platformInfo[id];
         const enabled = Boolean(currentConfig.sources[id]?.enabled);
@@ -440,6 +525,13 @@
         const platform = platformInfo[id];
         const connected = Boolean(currentConfig.credentialStatus?.[`${id}Cookie`]);
         const skipped = skippedLogins.has(id);
+        const status = loginStatus[id] || '';
+        const loading = status === 'loading';
+        const error = status.startsWith('error:') ? status.slice('error:'.length) : '';
+        const statusText = connected ? '已连接' : loading ? '等待登录' : skipped ? '以后再说' : '未连接';
+        const statusClass = connected
+          ? 'bg-green-700 text-white'
+          : loading ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600';
         return `
           <div class="rounded-lg border ${connected ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'} p-5">
             <div class="flex items-start justify-between gap-3">
@@ -447,10 +539,12 @@
                 <h3 class="text-lg font-bold">🔐 ${platform.name}</h3>
                 <p class="mt-2 text-sm text-gray-600">需要你的登录凭证才能搜索。</p>
               </div>
-              <span class="rounded-full px-3 py-1 text-xs font-semibold ${connected ? 'bg-green-700 text-white' : 'bg-gray-100 text-gray-600'}">${connected ? '已连接' : skipped ? '以后再说' : '未连接'}</span>
+              <span class="rounded-full px-3 py-1 text-xs font-semibold ${statusClass}">${statusText}</span>
             </div>
+            <p class="mt-3 text-xs text-gray-500">登录窗口打开后，请完成登录或扫码。卡住了可以关闭窗口再重试。</p>
+            ${error ? `<p class="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">${escapeHtml(error)}</p>` : ''}
             <div class="mt-5 flex flex-wrap gap-2">
-              <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="launchLogin('${id}')">在浏览器中登录${platform.name}</button>
+              <button class="primary rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50" onclick="launchLogin('${id}')" ${loading ? 'disabled' : ''}>${loading ? '等待登录完成' : `在浏览器中登录${platform.name}`}</button>
               <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="skipLogin('${id}')">以后再说</button>
             </div>
           </div>
@@ -463,6 +557,14 @@
       const deepseekOk = Boolean(currentConfig.credentialStatus?.deepseekApiKey);
       setStatus('embeddingStatus', embeddingOk);
       setStatus('deepseekStatus', deepseekOk);
+    }
+
+    function renderDeliveryState() {
+      document.getElementById('delivery-lark').classList.toggle('selected', selectedDelivery === 'lark');
+      document.getElementById('delivery-app').classList.toggle('selected', selectedDelivery === 'app');
+      document.getElementById('larkForm').classList.toggle('hidden', selectedDelivery !== 'lark');
+      document.getElementById('larkAppId').value = currentConfig.lark.appId || '';
+      document.getElementById('larkReceiver').value = currentConfig.lark.defaultReceiverId || '';
     }
 
     function setStatus(id, ok) {
@@ -499,11 +601,13 @@
       renderSourceGrid();
       renderLoginGrid();
       renderAiStatus();
+      renderDeliveryState();
       if (currentStep === 6) renderFinishSummary();
     }
 
     async function selectPersona(key) {
       selectedPersona = key;
+      persistOnboardingState();
       const persona = personas[key];
       Object.keys(currentConfig.sources).forEach(source => {
         currentConfig.sources[source].enabled = persona.sources.includes(source);
@@ -546,16 +650,27 @@
     }
 
     async function launchLogin(platform) {
+      loginStatus[platform] = 'loading';
+      renderLoginGrid();
       showToast(`正在打开${platformInfo[platform].name}登录窗口`);
-      const saved = await request(`/api/users/${encodeURIComponent(userId)}/login/${platform}`, { method: 'POST' });
-      ensureConfigShape(saved);
-      skippedLogins.delete(platform);
-      renderAll();
-      showToast(`${platformInfo[platform].name}已连接`);
+      try {
+        const saved = await request(`/api/users/${encodeURIComponent(userId)}/login/${platform}`, { method: 'POST' });
+        ensureConfigShape(saved);
+        skippedLogins.delete(platform);
+        loginStatus[platform] = '';
+        persistOnboardingState();
+        renderAll();
+        showToast(`${platformInfo[platform].name}已连接`);
+      } catch (error) {
+        loginStatus[platform] = `error:${error.message || '登录没有完成，可以重试'}`;
+        renderLoginGrid();
+        showToast(`${platformInfo[platform].name}登录没有完成`);
+      }
     }
 
     function skipLogin(platform) {
       skippedLogins.add(platform);
+      persistOnboardingState();
       renderLoginGrid();
     }
 
@@ -575,18 +690,13 @@
     }
 
     function nextFromAi() {
-      const hasAi = currentConfig.credentialStatus?.embeddingApiKey || currentConfig.credentialStatus?.deepseekApiKey;
-      if (!hasAi && !confirm('不接 AI 的话，只能帮你抓内容，没法筛选和写草稿。确定先跳过？')) {
-        return;
-      }
       goStep(5);
     }
 
     function selectDelivery(type) {
       selectedDelivery = type;
-      document.getElementById('delivery-lark').classList.toggle('selected', type === 'lark');
-      document.getElementById('delivery-app').classList.toggle('selected', type === 'app');
-      document.getElementById('larkForm').classList.toggle('hidden', type !== 'lark');
+      persistOnboardingState();
+      renderDeliveryState();
     }
 
     async function finishSetup() {
@@ -607,6 +717,7 @@
         currentConfig.lark.defaultReceiverId = '';
       }
       await saveConfig('');
+      persistOnboardingState();
       goStep(6);
     }
 
@@ -621,6 +732,23 @@
       document.getElementById('finishState').textContent = '已开始运行，可以到运行日志看实时进度。';
     }
 
+    function normalizeStep(step) {
+      const numeric = Number(step) || 1;
+      if (numeric < 1) return 1;
+      if (numeric > 6) return 6;
+      if (numeric === 3 && !authPlatforms.some(id => currentConfig.sources[id]?.enabled)) {
+        return 4;
+      }
+      return numeric;
+    }
+
+    function activateCurrentStep() {
+      currentStep = normalizeStep(currentStep);
+      document.querySelectorAll('.step-panel').forEach(panel => panel.classList.remove('active'));
+      document.getElementById(`step-${currentStep}`).classList.add('active');
+      renderAll();
+    }
+
     function goStep(step) {
       if (step === 3) {
         const selected = authPlatforms.filter(id => currentConfig.sources[id]?.enabled);
@@ -632,18 +760,18 @@
       } else {
         currentStep = step;
       }
-      document.querySelectorAll('.step-panel').forEach(panel => panel.classList.remove('active'));
-      document.getElementById(`step-${currentStep}`).classList.add('active');
-      renderAll();
+      persistOnboardingState();
+      activateCurrentStep();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     async function init() {
       const config = await request(`/api/users/${encodeURIComponent(userId)}`);
       ensureConfigShape(config);
-      document.getElementById('larkAppId').value = currentConfig.lark.appId || '';
-      document.getElementById('larkReceiver').value = currentConfig.lark.defaultReceiverId || '';
-      renderAll();
+      if (!savedOnboardingState.step && currentConfig.profilePath) {
+        currentStep = 2;
+      }
+      activateCurrentStep();
     }
 
     init().catch(error => {
