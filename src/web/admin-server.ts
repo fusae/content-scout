@@ -138,6 +138,25 @@ class AdminServer {
         return;
       }
 
+      const userRecommendationsMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/recommendations$/);
+      if (userRecommendationsMatch && method === 'GET') {
+        this.json(res, this.listRecommendations(userRecommendationsMatch[1], Number(url.searchParams.get('limit') || 30)));
+        return;
+      }
+
+      const recommendationStatusMatch = url.pathname.match(/^\/api\/recommendations\/(\d+)\/status$/);
+      if (recommendationStatusMatch && method === 'POST') {
+        const body = await this.readJson(req);
+        const status = String(body.status || '');
+        if (!['pending', 'approved', 'rejected', 'posted'].includes(status)) {
+          this.json(res, { error: 'Invalid recommendation status' }, 400);
+          return;
+        }
+        this.db.updateRecommendationStatus(Number(recommendationStatusMatch[1]), status, String(body.feedback || ''));
+        this.json(res, { ok: true });
+        return;
+      }
+
       const credentialMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/credentials\/([^/]+)$/);
       if (credentialMatch && method === 'POST') {
         const body = await this.readJson(req);
@@ -272,6 +291,36 @@ class AdminServer {
     const profilePath = resolve('./data/profiles', `${this.safeFileName(userId)}.json`);
     if (existsSync(profilePath)) {
       unlinkSync(profilePath);
+    }
+  }
+
+  private listRecommendations(userId: string, limit: number): unknown[] {
+    return this.db.listRecommendationsWithContent(userId, Math.max(1, Math.min(limit || 30, 100))).map((item) => ({
+      id: item.id,
+      userId: item.user_id,
+      contentId: item.content_id,
+      score: item.match_score,
+      reason: item.match_reason,
+      drafts: this.safeJson(item.drafts, []),
+      status: item.status || 'pending',
+      recommendedAt: item.recommended_at,
+      feedback: item.user_feedback,
+      source: item.source,
+      title: item.title,
+      content: item.content,
+      url: item.url,
+      author: item.author,
+      publishedAt: item.published_at,
+      collectedAt: item.collected_at,
+    }));
+  }
+
+  private safeJson(value: string | undefined, fallback: unknown): unknown {
+    if (!value) return fallback;
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      return fallback;
     }
   }
 
@@ -702,7 +751,7 @@ class AdminServer {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Content Scout - 管理后台</title>
+  <title>Spark - 管理后台</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     [x-cloak] { display: none !important; }
@@ -757,7 +806,7 @@ class AdminServer {
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between items-center h-16">
         <div class="flex items-center">
-          <h1 class="text-xl font-bold text-gray-900">Content Scout</h1>
+          <h1 class="text-xl font-bold text-gray-900">Spark</h1>
           <span class="ml-3 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">管理后台</span>
         </div>
         <div class="flex items-center space-x-4">
@@ -812,6 +861,9 @@ class AdminServer {
             <nav class="flex -mb-px">
               <button onclick="switchTab('overview')" id="tab-overview" class="tab-button active px-6 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
                 概览
+              </button>
+              <button onclick="switchTab('recommendations')" id="tab-recommendations" class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                推荐内容
               </button>
               <button onclick="switchTab('config')" id="tab-config" class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
                 配置
@@ -868,6 +920,29 @@ class AdminServer {
               </div>
             </div>
 
+            <!-- Recommendations Tab -->
+            <div id="content-recommendations" class="tab-content hidden">
+              <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 class="text-xl font-semibold text-gray-900">推荐内容</h2>
+                  <p class="mt-1 text-sm text-gray-500">这里是每天跑完后真正要看的结果；日志只用于排查问题。</p>
+                </div>
+                <div class="flex gap-2">
+                  <button onclick="loadRecommendations()" class="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition">
+                    刷新
+                  </button>
+                  <button onclick="switchTab('logs')" class="bg-white text-gray-700 px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50 transition">
+                    查看日志
+                  </button>
+                </div>
+              </div>
+
+              <div id="runProgressPanel" class="mb-5"></div>
+              <div id="recommendationsList" class="space-y-4">
+                <div class="text-gray-500">加载中...</div>
+              </div>
+            </div>
+
             <!-- Config Tab -->
             <div id="content-config" class="tab-content hidden">
               <div class="space-y-6">
@@ -881,7 +956,7 @@ class AdminServer {
                       <input id="configUserId" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如: local">
                     </div>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-2">X 创作者账号</label>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">创作者账号</label>
                       <input id="configAccountHandle" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如: @myaccount">
                       <p class="mt-1 text-xs text-gray-500">用于画像和草稿口吻，不用于抓取 X 内容。</p>
                     </div>
@@ -1180,19 +1255,28 @@ class AdminServer {
   </div>
 
   <script>
-    let currentUserId = 'local';
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialUserId = urlParams.get('userId') || 'local';
+    const initialTab = ['overview', 'recommendations', 'config', 'platforms', 'logs'].includes(urlParams.get('tab') || '')
+      ? urlParams.get('tab')
+      : '';
+    let currentUserId = initialUserId;
     let currentConfig = null;
     let selectedPlatformId = null;
     let logsRefreshTimer = null;
+    let recommendationsRefreshTimer = null;
     let knownUserIds = new Set();
     let latestRunStats = {};
     let lastRecoveryNoticeKey = '';
-    const tokenFromUrl = new URLSearchParams(window.location.search).get('token');
+    const tokenFromUrl = urlParams.get('token');
+    const adminTokenKey = 'sparkAdminToken';
+    const legacyAdminTokenKey = 'contentScoutAdminToken';
     if (tokenFromUrl) {
-      localStorage.setItem('contentScoutAdminToken', tokenFromUrl);
+      localStorage.setItem(adminTokenKey, tokenFromUrl);
+      localStorage.removeItem(legacyAdminTokenKey);
       window.history.replaceState(null, '', window.location.pathname);
     }
-    const adminToken = localStorage.getItem('contentScoutAdminToken') || '';
+    const adminToken = localStorage.getItem(adminTokenKey) || localStorage.getItem(legacyAdminTokenKey) || '';
 
     // Platform definitions
     const platforms = [
@@ -1239,6 +1323,9 @@ class AdminServer {
 
       if (tabName === 'logs') {
         loadLogs();
+      }
+      if (tabName === 'recommendations') {
+        loadRecommendations();
       }
     }
 
@@ -2025,8 +2112,8 @@ class AdminServer {
         const result = await request(\`/api/users/\${encodeURIComponent(id)}/run\`, {method: 'POST'});
         document.getElementById('status').textContent = JSON.stringify(result, null, 2);
         showToast('任务已提交');
-        switchTab('logs');
-        setTimeout(loadLogs, 500);
+        switchTab('recommendations');
+        setTimeout(loadRecommendations, 500);
       } catch (error) {
         console.error('Failed to run user:', error);
       }
@@ -2066,6 +2153,182 @@ class AdminServer {
         }
       } catch (error) {
         console.error('Failed to load logs:', error);
+      }
+    }
+
+    async function loadRecommendations() {
+      try {
+        const [items, runs] = await Promise.all([
+          request(\`/api/users/\${encodeURIComponent(currentUserId)}/recommendations?limit=30\`),
+          request(\`/api/runs?userId=\${encodeURIComponent(currentUserId)}&limit=1\`)
+        ]);
+        const latestRun = runs[0];
+        latestRunStats = parseStats(latestRun?.stats_json);
+        renderRunProgress(latestRun);
+        document.getElementById('recommendationsList').innerHTML = renderRecommendations(items, latestRun);
+        if (currentConfig) {
+          updateOverview(currentConfig);
+        }
+
+        if (recommendationsRefreshTimer) {
+          clearTimeout(recommendationsRefreshTimer);
+          recommendationsRefreshTimer = null;
+        }
+        const visible = !document.getElementById('content-recommendations').classList.contains('hidden');
+        if (visible && latestRun?.status === 'running') {
+          recommendationsRefreshTimer = setTimeout(loadRecommendations, 3000);
+        }
+      } catch (error) {
+        console.error('Failed to load recommendations:', error);
+      }
+    }
+
+    function renderRunProgress(run) {
+      const panel = document.getElementById('runProgressPanel');
+      if (!run) {
+        panel.innerHTML = \`
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+            还没有运行记录。点击“立即运行”后，推荐内容会出现在下方。
+          </div>
+        \`;
+        return;
+      }
+
+      const stats = parseStats(run.stats_json);
+      const stages = Array.isArray(stats.stages) ? stats.stages : [];
+      const phaseOrder = ['初始化', '抓取', '清洗合并', '画像', '筛选', '生成草稿', '保存结果', '推送'];
+      const donePhases = new Set(stages
+        .filter(stage => ['succeeded', 'skipped', 'failed'].includes(stage.status))
+        .map(stage => stage.phase));
+      const currentStage = stages[stages.length - 1];
+      const percent = run.status === 'succeeded' || run.status === 'failed'
+        ? 100
+        : Math.max(8, Math.min(95, Math.round((donePhases.size / phaseOrder.length) * 100)));
+      const color = run.status === 'failed'
+        ? 'bg-red-600'
+        : run.status === 'succeeded' ? 'bg-green-600' : 'bg-blue-600';
+      const title = run.status === 'running'
+        ? \`正在运行：\${escapeHtml(currentStage?.phase || '准备中')}\`
+        : run.status === 'succeeded' ? '本次运行已完成' : '本次运行失败';
+      const hint = run.status === 'running'
+        ? '通常 1-5 分钟；登录平台较多时会更久。结果生成后会自动出现在下方。'
+        : buildRunSummary(stats);
+
+      panel.innerHTML = \`
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-semibold text-gray-900">\${title}</div>
+              <div class="mt-1 text-sm text-gray-600">\${escapeHtml(hint)}</div>
+            </div>
+            <span class="px-2 py-1 text-xs font-medium rounded \${statusClass(run.status)}">\${statusLabel(run.status)}</span>
+          </div>
+          <div class="mt-4 h-2 rounded-full bg-gray-100 overflow-hidden">
+            <div class="h-full \${color}" style="width: \${percent}%"></div>
+          </div>
+          \${stages.length ? \`
+            <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+              \${stages.slice(-4).map(stage => \`
+                <div class="flex gap-2 text-xs text-gray-600">
+                  <span class="mt-1 h-2 w-2 shrink-0 rounded-full \${stageDotClass(stage.status)}"></span>
+                  <span><span class="font-medium text-gray-800">\${escapeHtml(stage.phase || '')}</span> · \${escapeHtml(stage.message || '')}</span>
+                </div>
+              \`).join('')}
+            </div>
+          \` : ''}
+        </div>
+      \`;
+    }
+
+    function renderRecommendations(items, latestRun) {
+      if (!items.length) {
+        const running = latestRun?.status === 'running';
+        return \`
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
+            <div class="text-base font-semibold text-gray-900">\${running ? '正在生成推荐内容' : '暂无推荐内容'}</div>
+            <p class="mt-2 text-sm text-gray-600">\${running ? '不用盯日志，完成后这里会自动刷新。' : '点击概览里的“立即运行”，跑完后这里会显示推荐卡片。'}</p>
+          </div>
+        \`;
+      }
+
+      return items.map(item => {
+        const drafts = Array.isArray(item.drafts) ? item.drafts : [];
+        const primaryDraft = drafts[0]?.content || '';
+        return \`
+          <article class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">\${sourceLabel(item.source)}</span>
+                  <span class="rounded px-2 py-1 text-xs font-medium \${statusClass(item.status)}">\${recommendationStatusLabel(item.status)}</span>
+                  <span class="text-xs text-gray-500">评分 \${formatScore(item.score)}</span>
+                  <span class="text-xs text-gray-400">\${formatTime(item.recommendedAt)}</span>
+                </div>
+                <h3 class="mt-3 text-lg font-semibold text-gray-950">\${escapeHtml(item.title || '无标题')}</h3>
+              </div>
+              <div class="flex shrink-0 flex-wrap gap-2">
+                <button onclick="setRecommendationStatus(\${Number(item.id)}, 'approved')" class="rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700">保留</button>
+                <button onclick="setRecommendationStatus(\${Number(item.id)}, 'rejected')" class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">忽略</button>
+              </div>
+            </div>
+
+            <p class="mt-3 text-sm leading-6 text-gray-700">\${escapeHtml(truncateText(item.content || '', 280))}</p>
+            \${item.reason ? \`<div class="mt-3 rounded-md bg-blue-50 p-3 text-sm text-blue-900"><span class="font-medium">推荐理由：</span>\${escapeHtml(item.reason)}</div>\` : ''}
+
+            <div class="mt-4">
+              <div class="mb-2 text-sm font-semibold text-gray-900">草稿</div>
+              \${drafts.length ? \`
+                <div class="space-y-3">
+                  \${drafts.map((draft, index) => \`
+                    <div class="rounded-md border border-gray-200 bg-gray-50 p-3">
+                      <div class="mb-2 flex items-center justify-between gap-2">
+                        <span class="text-xs font-medium text-gray-600">\${draftStyleLabel(draft.style)} · \${Number(draft.length || draft.content?.length || 0)} 字</span>
+                        <button onclick="copyDraftText(\${Number(item.id)}, \${index})" class="text-xs font-medium text-blue-700 hover:text-blue-900">复制</button>
+                      </div>
+                      <div id="draft-\${Number(item.id)}-\${index}" class="whitespace-pre-wrap text-sm leading-6 text-gray-800">\${escapeHtml(draft.content || '')}</div>
+                    </div>
+                  \`).join('')}
+                </div>
+              \` : \`
+                <div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  这条内容已保留，但没有生成草稿；接入内容创作 AI 后会生成短、中、长三个版本。
+                </div>
+              \`}
+            </div>
+
+            <div class="mt-4 flex flex-wrap gap-3 text-sm">
+              \${item.url ? \`<a href="\${escapeHtml(item.url)}" target="_blank" rel="noreferrer" class="font-medium text-blue-700 hover:text-blue-900">查看原文</a>\` : ''}
+              \${primaryDraft ? \`<button onclick="copyDraftText(\${Number(item.id)}, 0)" class="font-medium text-gray-700 hover:text-gray-950">复制首个草稿</button>\` : ''}
+            </div>
+          </article>
+        \`;
+      }).join('');
+    }
+
+    async function setRecommendationStatus(id, status) {
+      await request(\`/api/recommendations/\${encodeURIComponent(id)}/status\`, {
+        method: 'POST',
+        body: JSON.stringify({status})
+      });
+      showToast(status === 'approved' ? '已保留' : '已忽略');
+      await loadRecommendations();
+    }
+
+    async function copyDraftText(id, index) {
+      const element = document.getElementById(\`draft-\${id}-\${index}\`);
+      const text = element?.textContent || '';
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('草稿已复制');
+      } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+        showToast('草稿已复制');
       }
     }
 
@@ -2173,7 +2436,11 @@ class AdminServer {
       return {
         running: 'bg-blue-100 text-blue-800',
         succeeded: 'bg-green-100 text-green-800',
-        failed: 'bg-red-100 text-red-800'
+        failed: 'bg-red-100 text-red-800',
+        pending: 'bg-blue-100 text-blue-800',
+        approved: 'bg-green-100 text-green-800',
+        rejected: 'bg-gray-100 text-gray-700',
+        posted: 'bg-purple-100 text-purple-800'
       }[status] || 'bg-gray-100 text-gray-700';
     }
 
@@ -2184,6 +2451,38 @@ class AdminServer {
         failed: 'bg-red-500',
         skipped: 'bg-gray-400'
       }[status] || 'bg-gray-400';
+    }
+
+    function recommendationStatusLabel(status) {
+      return {
+        pending: '待审核',
+        approved: '已保留',
+        rejected: '已忽略',
+        posted: '已发布'
+      }[status] || status || '待审核';
+    }
+
+    function sourceLabel(source) {
+      const platform = platforms.find(item => item.id === source);
+      return platform?.name || source || '未知来源';
+    }
+
+    function draftStyleLabel(style) {
+      return {
+        short: '短版',
+        medium: '中版',
+        long: '长版'
+      }[style] || '草稿';
+    }
+
+    function formatScore(value) {
+      const score = Number(value || 0);
+      return Number.isFinite(score) ? score.toFixed(1) : '0.0';
+    }
+
+    function truncateText(value, maxLength) {
+      const text = String(value || '').trim();
+      return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
     }
 
     function formatTime(value) {
@@ -2214,8 +2513,11 @@ class AdminServer {
       });
 
       // Load initial data
+      document.getElementById('userId').value = initialUserId;
       loadUsers();
-      loadUser();
+      loadUser().then(() => {
+        if (initialTab) switchTab(initialTab);
+      });
     });
   </script>
 </body>

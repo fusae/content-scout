@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Content Scout - 首次设置</title>
+  <title>Spark - 首次设置</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     * { letter-spacing: 0; }
@@ -42,8 +42,8 @@
   <main class="mx-auto max-w-6xl px-4 py-6 md:py-10">
     <header class="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
       <div>
-        <div class="text-base font-bold text-green-800">Content Scout</div>
-        <h1 class="mt-1 max-w-2xl text-3xl font-bold text-gray-950">每天自动帮你找选题、筛重点、写草稿</h1>
+        <div class="text-base font-bold text-green-800">Spark</div>
+        <h1 class="mt-1 max-w-2xl text-3xl font-bold text-gray-950">每天发现值得写的内容</h1>
         <p class="mt-3 max-w-3xl text-base text-gray-600">设置一次，以后打开应用就能看到从多个平台抓来的灵感、推荐理由和可直接改写的草稿。</p>
       </div>
       <a href="/dashboard" class="text-sm font-medium text-gray-600 hover:text-gray-950">进入完整设置</a>
@@ -88,7 +88,7 @@
         <div class="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <label class="text-sm font-medium text-gray-800" for="topicInput">你想关注哪些话题？</label>
           <div class="mt-2 flex flex-col gap-2 md:flex-row">
-            <input id="topicInput" class="min-h-11 flex-1 rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="例如：爆款选题, 内容增长, 热点观察">
+            <input id="topicInput" class="min-h-11 flex-1 rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="例如：爆款选题, 内容增长, 热点观察" oninput="markTopicsDirty()">
             <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="saveTopics()">保存话题</button>
           </div>
           <p id="topicSaveState" class="mt-2 text-xs text-gray-500">这些词会用于支持搜索的平台。</p>
@@ -96,7 +96,7 @@
         <div id="sourceGrid" class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"></div>
         <div class="mt-8 flex justify-between gap-3">
           <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(1)">上一步</button>
-          <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(3)">下一步：连接平台</button>
+          <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="nextFromSources()">下一步：连接平台</button>
         </div>
       </div>
 
@@ -114,7 +114,7 @@
       <div id="step-4" class="step-panel">
         <p class="text-sm font-semibold text-green-800">Step 4</p>
         <h2 class="mt-1 text-2xl font-bold">AI 可以稍后再接</h2>
-        <p class="mt-2 text-gray-600">不填也能先跑一遍，看到每天抓回来的内容。接上后，Content Scout 会自动筛重点和写草稿。</p>
+        <p class="mt-2 text-gray-600">不填也能先跑一遍，看到每天抓回来的内容。接上后，Spark 会自动筛重点和写草稿。</p>
         <div class="soft-note mt-5 rounded-lg p-4">
           <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -187,24 +187,34 @@
           </button>
         </div>
         <div id="larkForm" class="mt-5 hidden rounded-lg border border-gray-200 bg-gray-50 p-4">
-          <div class="mb-4 rounded-md bg-white p-3 text-sm text-gray-700">
-            不会配飞书也没关系，选“就在应用里看”，推荐结果会保存在这里。
+          <div id="larkGate" class="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 class="font-bold text-gray-950">你已经有飞书机器人了吗？</h3>
+            <p class="mt-2 text-sm text-gray-600">没有的话先用应用内查看，推荐结果一样会保存，不需要现在去飞书开放平台折腾。</p>
+            <div class="mt-4 flex flex-col gap-2 md:flex-row">
+              <button class="primary rounded-md px-4 py-2 text-sm font-medium" onclick="showLarkFields()">我已有机器人，填写信息</button>
+              <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="useAppDelivery()">我还没有，先在应用里看</button>
+            </div>
           </div>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <label class="text-sm font-medium">飞书机器人编号
-              <input id="larkAppId" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="从飞书机器人页面复制">
-            </label>
-            <label class="text-sm font-medium">飞书机器人密钥
-              <input id="larkAppSecret" type="password" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="同一页复制">
-            </label>
-            <label class="text-sm font-medium">发给谁
-              <input id="larkReceiver" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴用户或群的标识">
-            </label>
+          <div id="larkFields" class="mt-4 hidden">
+            <div class="mb-4 rounded-md bg-white p-3 text-sm text-gray-700">
+              只有已经创建过飞书机器人的用户才需要填这里；没填完会自动改为应用内查看。
+            </div>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <label class="text-sm font-medium">飞书机器人编号
+                <input id="larkAppId" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="从飞书机器人页面复制">
+              </label>
+              <label class="text-sm font-medium">飞书机器人密钥
+                <input id="larkAppSecret" type="password" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="同一页复制">
+              </label>
+              <label class="text-sm font-medium">发给谁
+                <input id="larkReceiver" class="mt-1 min-h-11 w-full rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" placeholder="粘贴用户或群的标识">
+              </label>
+            </div>
+            <details class="mt-3 text-sm text-gray-600">
+              <summary class="cursor-pointer font-medium text-gray-800">怎么找</summary>
+              <p class="mt-2">进入你已有的飞书机器人应用，在“凭证与基础信息”复制编号和密钥；接收人标识可以之后在完整设置里补。</p>
+            </details>
           </div>
-          <details class="mt-3 text-sm text-gray-600">
-            <summary class="cursor-pointer font-medium text-gray-800">怎么找</summary>
-            <p class="mt-2">先在飞书创建一个机器人应用，在“凭证与基础信息”里复制编号和密钥。接收对象可以之后补，当前先选“就在应用里看”也能正常使用。</p>
-          </details>
         </div>
         <div class="mt-8 flex justify-between gap-3">
           <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="goStep(4)">上一步</button>
@@ -215,7 +225,7 @@
       <div id="step-6" class="step-panel">
         <p class="text-sm font-semibold text-green-800">完成</p>
         <h2 class="mt-1 text-2xl font-bold">你的灵感引擎已就绪！</h2>
-        <p class="mt-2 text-gray-600">以后打开 Content Scout，就能在这里看每日推荐、运行日志和平台状态。</p>
+        <p class="mt-2 text-gray-600">以后打开 Spark，就能在这里看每日推荐、运行日志和平台状态。</p>
         <div id="finishSummary" class="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-5 text-sm text-gray-800"></div>
         <div class="mt-6 flex flex-col gap-3 md:flex-row">
           <select id="scheduleSelect" class="min-h-11 rounded-md border border-gray-300 px-3 text-sm focus:border-green-700 focus:outline-none" onchange="saveSchedule()">
@@ -237,17 +247,22 @@
   <script>
     const userId = new URLSearchParams(location.search).get('userId') || 'local';
     const tokenFromUrl = new URLSearchParams(location.search).get('token');
+    const adminTokenKey = 'sparkAdminToken';
+    const legacyAdminTokenKey = 'contentScoutAdminToken';
     if (tokenFromUrl) {
-      localStorage.setItem('contentScoutAdminToken', tokenFromUrl);
+      localStorage.setItem(adminTokenKey, tokenFromUrl);
+      localStorage.removeItem(legacyAdminTokenKey);
       history.replaceState(null, '', location.pathname);
     }
-    const adminToken = localStorage.getItem('contentScoutAdminToken') || '';
-    const onboardingStateKey = `contentScoutOnboarding:${userId}`;
+    const adminToken = localStorage.getItem(adminTokenKey) || localStorage.getItem(legacyAdminTokenKey) || '';
+    const onboardingStateKey = `sparkOnboarding:${userId}`;
+    const legacyOnboardingStateKey = `contentScoutOnboarding:${userId}`;
     const savedOnboardingState = readOnboardingState();
     let currentConfig = null;
     let currentStep = Number(savedOnboardingState.step || 1);
     let selectedPersona = savedOnboardingState.persona || '';
     let selectedDelivery = savedOnboardingState.delivery || 'app';
+    let larkFormExpanded = Boolean(savedOnboardingState.larkFormExpanded);
     let skippedLogins = new Set(savedOnboardingState.skippedLogins || []);
     let loginStatus = {};
 
@@ -346,7 +361,7 @@
 
     function readOnboardingState() {
       try {
-        return JSON.parse(localStorage.getItem(onboardingStateKey) || '{}');
+        return JSON.parse(localStorage.getItem(onboardingStateKey) || localStorage.getItem(legacyOnboardingStateKey) || '{}');
       } catch {
         return {};
       }
@@ -357,6 +372,7 @@
         step: currentStep,
         persona: selectedPersona,
         delivery: selectedDelivery,
+        larkFormExpanded,
         skippedLogins: Array.from(skippedLogins),
       }));
     }
@@ -495,6 +511,7 @@
       topicInput.placeholder = selectedPersona && personas[selectedPersona]?.examples
         ? personas[selectedPersona].examples
         : '例如：爆款选题, 内容增长, 热点观察';
+      updateTopicSaveState(keywords);
       document.getElementById('sourceGrid').innerHTML = visibleSources.map((id) => {
         const platform = platformInfo[id];
         const enabled = Boolean(currentConfig.sources[id]?.enabled);
@@ -528,10 +545,11 @@
         const status = loginStatus[id] || '';
         const loading = status === 'loading';
         const error = status.startsWith('error:') ? status.slice('error:'.length) : '';
-        const statusText = connected ? '已连接' : loading ? '等待登录' : skipped ? '以后再说' : '未连接';
+        const checkMessage = status.startsWith('check:') ? status.slice('check:'.length) : '';
+        const statusText = connected ? '已连接' : loading ? '等待登录' : checkMessage ? '待确认' : skipped ? '以后再说' : '未连接';
         const statusClass = connected
           ? 'bg-green-700 text-white'
-          : loading ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600';
+          : loading ? 'bg-blue-100 text-blue-800' : checkMessage ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600';
         return `
           <div class="rounded-lg border ${connected ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'} p-5">
             <div class="flex items-start justify-between gap-3">
@@ -543,8 +561,10 @@
             </div>
             <p class="mt-3 text-xs text-gray-500">登录窗口打开后，请完成登录或扫码。卡住了可以关闭窗口再重试。</p>
             ${error ? `<p class="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">${escapeHtml(error)}</p>` : ''}
+            ${checkMessage ? `<p class="mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800">${escapeHtml(checkMessage)}</p>` : ''}
             <div class="mt-5 flex flex-wrap gap-2">
               <button class="primary rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50" onclick="launchLogin('${id}')" ${loading ? 'disabled' : ''}>${loading ? '等待登录完成' : `在浏览器中登录${platform.name}`}</button>
+              ${checkMessage ? `<button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="checkLoginStatus('${id}')">检查登录状态</button>` : ''}
               <button class="secondary rounded-md px-4 py-2 text-sm font-medium" onclick="skipLogin('${id}')">以后再说</button>
             </div>
           </div>
@@ -563,6 +583,9 @@
       document.getElementById('delivery-lark').classList.toggle('selected', selectedDelivery === 'lark');
       document.getElementById('delivery-app').classList.toggle('selected', selectedDelivery === 'app');
       document.getElementById('larkForm').classList.toggle('hidden', selectedDelivery !== 'lark');
+      const showFields = selectedDelivery === 'lark' && (larkFormExpanded || Boolean(currentConfig.lark.appId));
+      document.getElementById('larkGate').classList.toggle('hidden', showFields);
+      document.getElementById('larkFields').classList.toggle('hidden', !showFields);
       document.getElementById('larkAppId').value = currentConfig.lark.appId || '';
       document.getElementById('larkReceiver').value = currentConfig.lark.defaultReceiverId || '';
     }
@@ -580,6 +603,16 @@
       const pending = required.filter(id => !currentConfig.credentialStatus?.[`${id}Cookie`]);
       const aiFilter = currentConfig.credentialStatus?.embeddingApiKey ? '内容筛选 已接入' : '内容筛选 跳过';
       const aiDraft = currentConfig.credentialStatus?.deepseekApiKey ? '内容创作 已接入' : '内容创作 跳过';
+      const aiNotes = [];
+      if (!currentConfig.credentialStatus?.embeddingApiKey) {
+        aiNotes.push('没接内容筛选，会看到按时间和基础规则整理的内容');
+      }
+      if (!currentConfig.credentialStatus?.deepseekApiKey) {
+        aiNotes.push('没接内容创作，不会自动生成短中长草稿');
+      }
+      const aiNotice = aiNotes.length
+        ? `<div class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">因为没接 AI，${aiNotes.join('；')}。随时可以在完整设置里补上。</div>`
+        : '';
       const push = selectedDelivery === 'lark' && currentConfig.lark.appId && currentConfig.lark.defaultReceiverId
         ? '飞书'
         : '应用内查看';
@@ -591,6 +624,7 @@
           <div><span class="font-semibold">AI：</span>${aiFilter} | ${aiDraft}</div>
           <div><span class="font-semibold">推送：</span>${push}</div>
         </div>
+        ${aiNotice}
       `;
       document.getElementById('scheduleSelect').value = currentConfig.schedule.cronSchedule || '0 9 * * *';
     }
@@ -629,24 +663,48 @@
     }
 
     async function toggleSource(id) {
+      applyTopicsFromInput();
       currentConfig.sources[id].enabled = !currentConfig.sources[id].enabled;
       await saveConfig('');
+      updateTopicSaveState();
       showToast(`${platformInfo[id].name}已${currentConfig.sources[id].enabled ? '打开' : '关闭'}`);
     }
 
-    async function saveTopics() {
-      const keywords = document.getElementById('topicInput').value
+    function readTopicKeywords() {
+      return document.getElementById('topicInput').value
         .split(/[,，\n]/)
         .map(item => item.trim())
         .filter(Boolean);
+    }
+
+    function applyTopicsFromInput() {
+      const keywords = readTopicKeywords();
       searchablePlatforms.forEach(id => {
         currentConfig.sources[id].keywords = keywords;
       });
-      await saveConfig('');
+      return keywords;
+    }
+
+    function updateTopicSaveState(keywords = currentConfig.sources.zhihu.keywords || []) {
       document.getElementById('topicSaveState').textContent = keywords.length
         ? `已保存 ${keywords.length} 个话题。`
         : '未设置话题。';
-      showToast('话题已保存');
+    }
+
+    function markTopicsDirty() {
+      document.getElementById('topicSaveState').textContent = '下一步会自动保存这些话题。';
+    }
+
+    async function saveTopics(showMessage = true) {
+      const keywords = applyTopicsFromInput();
+      await saveConfig('');
+      updateTopicSaveState(keywords);
+      if (showMessage) showToast('话题已保存');
+    }
+
+    async function nextFromSources() {
+      await saveTopics(false);
+      goStep(3);
     }
 
     async function launchLogin(platform) {
@@ -662,9 +720,37 @@
         renderAll();
         showToast(`${platformInfo[platform].name}已连接`);
       } catch (error) {
-        loginStatus[platform] = `error:${error.message || '登录没有完成，可以重试'}`;
+        const connected = await checkLoginStatus(platform, true);
+        if (!connected) {
+          loginStatus[platform] = `check:${error.message || '登录窗口超时，可能已经登录成功，可以检查一次'}`;
+          renderLoginGrid();
+          showToast(`${platformInfo[platform].name}登录状态待确认`);
+        }
+      }
+    }
+
+    async function checkLoginStatus(platform, silent = false) {
+      try {
+        const config = await request(`/api/users/${encodeURIComponent(userId)}`);
+        ensureConfigShape(config);
+        const connected = Boolean(currentConfig.credentialStatus?.[`${platform}Cookie`]);
+        if (connected) {
+          skippedLogins.delete(platform);
+          loginStatus[platform] = '';
+          persistOnboardingState();
+          renderAll();
+          if (!silent) showToast(`${platformInfo[platform].name}已连接`);
+          return true;
+        }
+        loginStatus[platform] = 'check:还没检测到登录状态，可以重试或稍后再检查。';
         renderLoginGrid();
-        showToast(`${platformInfo[platform].name}登录没有完成`);
+        if (!silent) showToast('还没检测到登录状态');
+        return false;
+      } catch (error) {
+        loginStatus[platform] = `check:${error.message || '检查失败，可以稍后重试'}`;
+        renderLoginGrid();
+        if (!silent) showToast('检查登录状态失败');
+        return false;
       }
     }
 
@@ -699,6 +785,20 @@
       renderDeliveryState();
     }
 
+    function showLarkFields() {
+      selectedDelivery = 'lark';
+      larkFormExpanded = true;
+      persistOnboardingState();
+      renderDeliveryState();
+    }
+
+    function useAppDelivery() {
+      selectedDelivery = 'app';
+      larkFormExpanded = false;
+      persistOnboardingState();
+      renderDeliveryState();
+    }
+
     async function finishSetup() {
       if (selectedDelivery === 'lark') {
         currentConfig.lark.appId = document.getElementById('larkAppId').value.trim() || currentConfig.lark.appId;
@@ -729,7 +829,11 @@
 
     async function runNow() {
       await request(`/api/users/${encodeURIComponent(userId)}/run`, { method: 'POST' });
-      document.getElementById('finishState').textContent = '已开始运行，可以到运行日志看实时进度。';
+      document.getElementById('finishState').textContent = '已开始运行，正在打开运行日志。';
+      const target = new URL('/dashboard', location.origin);
+      target.searchParams.set('userId', userId);
+      target.searchParams.set('tab', 'recommendations');
+      location.href = target.toString();
     }
 
     function normalizeStep(step) {
