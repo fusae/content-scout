@@ -2,7 +2,7 @@
 
 ## Short Summary
 
-x-content-scout is a personal, read-only content scouting tool. It fetches public posts from selected subreddits, stores basic post metadata locally, and ranks links for private review.
+Spark is a personal, read-only content discovery tool. It fetches public posts from selected subreddits, stores basic post metadata locally, and ranks links for private review.
 
 ## Intended API Use
 

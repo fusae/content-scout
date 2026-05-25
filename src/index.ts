@@ -7,7 +7,7 @@ import cron from 'node-cron';
 
 async function main() {
   try {
-    logger.info('Starting X Content Scout...');
+    logger.info('Starting Spark...');
 
     // 确保必要的目录存在
     ensureDirectories();
@@ -19,7 +19,7 @@ async function main() {
     logger.info('Application initialized successfully');
     logger.info(`Database: ${config.dbPath}`);
     logger.info(`Log level: ${config.logLevel}`);
-    logger.info(`X Account: @${config.xAccount.handle}`);
+    logger.info(`Account: @${config.xAccount.handle}`);
 
     // 初始化账号画像管理器
     logger.info('Initializing profile manager...');
@@ -78,7 +78,7 @@ async function main() {
       }
     });
 
-    logger.info('X Content Scout is running. Press Ctrl+C to stop.');
+    logger.info('Spark is running. Press Ctrl+C to stop.');
 
     // 保持进程运行
     process.on('SIGINT', () => {

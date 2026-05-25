@@ -1,8 +1,8 @@
-# X Content Scout - 项目完成总结
+# Spark - 项目完成总结
 
 ## 项目概述
 
-**X Content Scout** 是一个基于 AI 的 X 账号内容策划助手，能够自动发现适合你账号的热门话题，生成推文草稿，并通过飞书推送建议。
+**Spark** 是一个基于 AI 的内容发现与创作助手，能够自动发现适合你领域的热门话题，生成内容草稿，并通过飞书或应用内推荐页推送建议。
 
 **目标用户**: @example_creator  
 **实施日期**: 2026-05-12  
@@ -115,7 +115,7 @@
 ## 项目结构
 
 ```
-x-content-scout/
+spark/
 ├── src/
 │   ├── main.ts                  # 主入口
 │   ├── config.ts                # 配置管理
@@ -158,7 +158,7 @@ LARK_APP_SECRET=xxx
 LARK_BASE_ID=xxx
 FEISHU_DEFAULT_RECEIVER_ID=xxx
 
-# X 账号
+# 创作者账号
 X_ACCOUNT_HANDLE=example_creator
 
 # 数据库路径
@@ -328,8 +328,8 @@ A: 运行 `npm run workflow` 手动执行完整工作流。
 
 ## 文档索引
 
-- **设计文档**: `docs/specs/2026-05-12-x-content-scout-design.md`
-- **实施计划**: `docs/superpowers/specs/2026-05-12-x-content-scout-implementation-plan.md`
+- **设计文档**: `docs/specs/2026-05-12-spark-design.md`
+- **实施计划**: `docs/superpowers/specs/2026-05-12-spark-implementation-plan.md`
 - **Phase 报告**: 
   - `PHASE2_SUMMARY.md` - 内容聚合层
   - `PHASE3_REPORT.md` - 账号画像引擎

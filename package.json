@@ -1,7 +1,7 @@
 {
-  "name": "x-content-scout",
+  "name": "spark",
   "version": "0.1.0",
-  "description": "X Account Content Planning Assistant",
+  "description": "AI Content Discovery for Creators",
   "type": "module",
   "main": "dist/desktop/main.js",
   "scripts": {
@@ -32,8 +32,8 @@
   "author": "",
   "license": "MIT",
   "build": {
-    "appId": "app.content-scout.local",
-    "productName": "Content Scout",
+    "appId": "app.spark.local",
+    "productName": "Spark",
     "asar": false,
     "directories": {
       "output": "release"

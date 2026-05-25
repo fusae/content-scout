@@ -61,7 +61,7 @@ export const config = {
     baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
   },
 
-  // X 账号配置
+  // 创作者账号配置
   xAccount: {
     handle: process.env.X_ACCOUNT_HANDLE || 'example_creator',
   },

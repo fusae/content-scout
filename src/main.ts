@@ -12,7 +12,7 @@ import { logger } from './utils/logger.js';
 import { config, localRuntimeConfig } from './config.js';
 
 async function main() {
-  logger.info('========== X Content Scout 启动 ==========');
+  logger.info('========== Spark 启动 ==========');
   logger.info(`环境: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`账号: ${localRuntimeConfig.accountHandle}`);
 
@@ -88,7 +88,7 @@ async function main() {
     scheduler.start();
     const keepAlive = setInterval(() => undefined, 24 * 60 * 60 * 1000);
 
-    logger.info('========== X Content Scout 启动完成 ==========');
+    logger.info('========== Spark 启动完成 ==========');
     logger.info('系统正在运行，按 Ctrl+C 退出');
 
     // 8. 如果是开发模式，立即执行一次任务

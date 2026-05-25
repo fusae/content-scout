@@ -77,7 +77,7 @@ Phase 3 账号画像引擎已完成实施，所有功能模块已实现并通过
 - **新增配置**:
   - `deepseek.apiKey` - DeepSeek API 密钥
   - `deepseek.baseURL` - DeepSeek API 端点
-  - `xAccount.handle` - X 账号名称
+  - `xAccount.handle` - 创作者账号名称
 
 - **文件**: `.env.example`
 - **新增环境变量**:

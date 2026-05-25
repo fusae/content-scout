@@ -247,7 +247,7 @@ await feishuClient.pushRecommendations([
 
 1. **定时任务**：配置 cron 定期运行工作流
 2. **反馈学习**：根据用户反馈优化推荐算法
-3. **多账号支持**：支持管理多个 X 账号
+3. **多账号支持**：支持管理多个创作者账号
 4. **草稿编辑**：允许用户在飞书中直接编辑草稿
 5. **A/B 测试**：测试不同风格的草稿效果
 
@@ -259,7 +259,7 @@ await feishuClient.pushRecommendations([
 
 ## 总结
 
-Phase 5 和 Phase 6 的实施完成了 X Content Scout 的核心功能闭环：
+Phase 5 和 Phase 6 的实施完成了 Spark 的核心功能闭环：
 
 1. ✅ 内容聚合（7 个平台）
 2. ✅ 账号画像（风格分析）

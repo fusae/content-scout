@@ -53,7 +53,7 @@ function waitForHttp(url: string, timeoutMs = 30000): Promise<void> {
 
     const retry = (): void => {
       if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error('Content Scout 后台启动超时'));
+        reject(new Error('Spark 后台启动超时'));
         return;
       }
 
@@ -132,7 +132,7 @@ function startAdminServer(port: number): void {
 function showBackendExitDialog(code: number | null, extraDetail = ''): void {
   void dialog.showMessageBox({
     type: 'error',
-    title: 'Content Scout',
+    title: 'Spark',
     message: '后台服务已退出',
     detail: [
       code === null ? '进程被终止。' : `退出码：${code}`,
@@ -145,7 +145,7 @@ function showBackendExitDialog(code: number | null, extraDetail = ''): void {
 function createMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: 'Content Scout',
+      label: 'Spark',
       submenu: [
         {
           label: '在浏览器打开',
@@ -184,7 +184,7 @@ async function createWindow(): Promise<void> {
     height: 900,
     minWidth: 1080,
     minHeight: 720,
-    title: 'Content Scout',
+    title: 'Spark',
     backgroundColor: '#f5f7fb',
     webPreferences: {
       contextIsolation: true,
@@ -215,7 +215,7 @@ app.whenReady()
     await createWindow();
   })
   .catch((error: Error) => {
-    void dialog.showErrorBox('Content Scout 启动失败', error.message);
+    void dialog.showErrorBox('Spark 启动失败', error.message);
     app.quit();
   });
 

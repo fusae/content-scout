@@ -1,6 +1,8 @@
-# X Content Scout
+# Spark
 
-面向 X 创作者的内容搜集、筛选、草稿生成和飞书推送助手。
+每天发现值得写的内容。
+
+面向内容创作者的 AI 内容发现、筛选、草稿生成和推送助手。
 
 ## 项目结构
 
@@ -22,7 +24,7 @@ src/
 
 ### 方式 A：桌面启动
 
-macOS 可以直接双击 `Content Scout.command`。首次启动会自动安装依赖，然后打开桌面管理窗口。
+macOS 可以直接双击 `Spark.command`。首次启动会自动安装依赖，然后打开桌面管理窗口。
 
 也可以用 Electron 壳运行：
 
@@ -63,7 +65,7 @@ PROFILE_PATH=./config/profile.local.json
 EMBEDDING_API_KEY=your_dashscope_api_key
 LARK_APP_ID=your_lark_app_id
 LARK_APP_SECRET=your_lark_app_secret
-X_ACCOUNT_HANDLE=your_x_handle
+X_ACCOUNT_HANDLE=your_creator_handle
 REDDIT_SUBREDDITS=LocalLLaMA,OpenAI,ChatGPT,artificial,MachineLearning,programming,startups,technology
 ```
 
@@ -103,7 +105,7 @@ npm start
 ## 数据库表结构
 
 ### account_profile (账号画像)
-- 存储 X 账号的基本信息和兴趣向量
+- 存储创作者画像、兴趣和内容风格
 
 ### content_pool (内容池)
 - 存储收集的内容素材

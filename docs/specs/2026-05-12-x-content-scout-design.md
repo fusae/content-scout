@@ -1,6 +1,6 @@
-# X 账号内容策划助手 - 设计文档
+# Spark - 设计文档
 
-**项目名称：** x-content-scout  
+**项目名称：** Spark  
 **创建日期：** 2026-05-12  
 **设计版本：** v1.0
 
@@ -8,7 +8,7 @@
 
 ### 1.1 目标
 
-为 X 账号 (@example_creator) 提供智能内容策划服务：
+为内容创作者提供智能内容发现与创作辅助服务：
 - 每日自动发现适合账号定位的热门话题
 - 生成符合个人风格的推文草稿
 - 通过飞书推送建议，用户手动发布
@@ -419,7 +419,7 @@ FEISHU_APP_ID=cli_xxx
 FEISHU_APP_SECRET=xxx
 FEISHU_BOT_NAME=内容策划助手
 
-# X 账号
+# 创作者账号
 X_ACCOUNT_HANDLE=example_creator
 
 # 调度
@@ -463,7 +463,7 @@ LOG_LEVEL=info
 ## 八、项目结构
 
 ```
-x-content-scout/
+spark/
 ├── package.json
 ├── tsconfig.json
 ├── .env
@@ -538,8 +538,8 @@ x-content-scout/
 
 ```bash
 # 1. 克隆项目
-git clone <repo> x-content-scout
-cd x-content-scout
+git clone <repo> spark
+cd spark
 
 # 2. 安装依赖
 npm install
@@ -661,6 +661,6 @@ tail -f logs/error.log
 
 ## 十四、总结
 
-本系统通过 AI 驱动的智能推荐，将 X 账号内容创作从"找话题+写推文"简化为"选草稿+发布"，预计可节省 70% 的内容创作时间，同时保持内容质量和账号风格的一致性。
+本系统通过 AI 驱动的智能推荐，将内容创作从"找话题+写草稿"简化为"选草稿+发布"，预计可节省 70% 的内容创作时间，同时保持内容质量和账号风格的一致性。
 
 系统采用独立架构，成本可控（每月 $0.4），技术栈成熟，可快速实施。通过反馈学习机制，系统会持续优化，越用越准。

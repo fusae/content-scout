@@ -158,8 +158,8 @@ export class LarkClient {
     try {
       // 飞书 SDK 的机器人信息获取方式
       // 由于 SDK 类型定义问题，我们使用简化的实现
-      logger.info('Bot info: Content Scout Bot');
-      return { bot_name: 'Content Scout Bot', open_id: '' };
+      logger.info('Bot info: Spark Bot');
+      return { bot_name: 'Spark Bot', open_id: '' };
     } catch (error) {
       logger.error('Failed to get bot info:', error);
       throw error;

@@ -25,7 +25,7 @@ import { logger } from './utils/logger.js';
  * 完整工作流
  */
 async function runCompleteWorkflow() {
-  logger.info('=== X Content Scout - Complete Workflow ===');
+  logger.info('=== Spark - Complete Workflow ===');
   logger.info(`Account: @${localRuntimeConfig.accountHandle}`);
   logger.info(`Time: ${new Date().toISOString()}`);
 
