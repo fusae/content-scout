@@ -55,6 +55,7 @@ export class FeishuClient {
     recommendations: Array<{
       content: FilteredContent;
       drafts: Draft[];
+      recommendationId?: number;
     }>,
     options?: PushOptions
   ): Promise<PushResult[]> {
@@ -84,7 +85,8 @@ export class FeishuClient {
             rec.content,
             rec.drafts,
             receiverId,
-            opts.receiveIdType
+            opts.receiveIdType,
+            rec.recommendationId
           );
           results.push(result);
 
@@ -115,22 +117,20 @@ export class FeishuClient {
     content: FilteredContent,
     drafts: Draft[],
     receiverId: string,
-    receiveIdType: 'open_id' | 'user_id' | 'email'
+    receiveIdType: 'open_id' | 'user_id' | 'email',
+    existingRecommendationId?: number
   ): Promise<PushResult> {
     try {
-      // 1. 保存推荐记录到数据库
-      const recommendationId = this.db.insertRecommendation({
-        content_id: content.contentId,
-        match_score: content.aiScore || content.embeddingSimilarity * 10,
-        match_reason: content.aiReason,
-        drafts: JSON.stringify(drafts),
-        status: 'pending',
-      });
+      const recommendationId = existingRecommendationId || this.db.insertRecommendation({
+          content_id: content.contentId,
+          match_score: content.aiScore || content.embeddingSimilarity * 10,
+          match_reason: content.aiReason,
+          drafts: JSON.stringify(drafts),
+          status: 'pending',
+        });
 
-      // 2. 构建卡片
       const card = CardBuilder.buildRecommendationCard(content, drafts, recommendationId);
 
-      // 3. 发送卡片
       const { message_id } = await this.larkClient.sendCard(receiverId, card, receiveIdType);
 
       logger.info(`Recommendation #${recommendationId} pushed, message_id: ${message_id}`);

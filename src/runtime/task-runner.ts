@@ -122,7 +122,7 @@ export class RuntimeTaskRunner {
       await feishuClient.initialize(configForUser.lark.defaultReceiverId, {
         listenForActions: false,
       });
-      await feishuClient.sendText('X Content Scout 测试推送成功');
+      await feishuClient.sendText('Spark 测试推送成功');
       feishuClient.close();
 
       this.db.finishRuntimeRunLog(runLogId, 'succeeded', {
@@ -308,10 +308,23 @@ export class RuntimeTaskRunner {
       progress.drafts
     );
 
+    const persistedRecommendations = recommendations.map((recommendation) => ({
+      ...recommendation,
+      recommendationId: this.db.insertRecommendation({
+        user_id: configForUser.userId,
+        content_id: recommendation.content.contentId,
+        match_score: recommendation.content.aiScore || recommendation.content.embeddingSimilarity * 10,
+        match_reason: recommendation.content.aiReason,
+        drafts: JSON.stringify(recommendation.drafts),
+        status: 'pending',
+      }),
+    }));
+    this.logStage(runLogId, progress, '保存结果', 'succeeded', `已保存 ${persistedRecommendations.length} 条推荐，可在应用内查看`);
+
     if (!this.canPushToFeishu(configForUser)) {
       logger.warn(`Feishu config incomplete, skip push: ${configForUser.userId}`);
       progress.push = {
-        attempted: recommendations.length,
+        attempted: persistedRecommendations.length,
         succeeded: 0,
         failed: 0,
         skipped: true,
@@ -319,12 +332,12 @@ export class RuntimeTaskRunner {
       this.logStage(runLogId, progress, '推送', 'skipped', '飞书配置不完整，跳过推送');
       return {
         aggregation: this.formatAggregationStats(aggregation),
-        recommendations: recommendations.length,
+        recommendations: persistedRecommendations.length,
         pushed: 0,
       };
     }
 
-    this.logStage(runLogId, progress, '推送', 'running', `开始推送 ${recommendations.length} 条推荐到飞书`);
+    this.logStage(runLogId, progress, '推送', 'running', `开始推送 ${persistedRecommendations.length} 条推荐到飞书`);
     let pushResults: Awaited<ReturnType<FeishuClient['pushRecommendations']>> = [];
     let pushError = '';
     let pushFailure: ReturnType<typeof classifyFailure> | undefined;
@@ -333,7 +346,7 @@ export class RuntimeTaskRunner {
       await feishuClient.initialize(configForUser.lark.defaultReceiverId, {
         listenForActions: false,
       });
-      pushResults = await feishuClient.pushRecommendations(recommendations);
+      pushResults = await feishuClient.pushRecommendations(persistedRecommendations);
     } catch (error) {
       pushError = (error as Error).message;
       pushFailure = classifyFailure(error, '飞书');
@@ -343,9 +356,9 @@ export class RuntimeTaskRunner {
     }
     const pushed = pushResults.filter((result) => result.success).length;
     progress.push = {
-      attempted: recommendations.length,
+      attempted: persistedRecommendations.length,
       succeeded: pushed,
-      failed: pushError ? recommendations.length : pushResults.length - pushed,
+      failed: pushError ? persistedRecommendations.length : pushResults.length - pushed,
       failureType: pushFailure?.failureType,
       userMessage: pushFailure?.userMessage,
       actionLabel: pushFailure?.actionLabel,
@@ -355,13 +368,13 @@ export class RuntimeTaskRunner {
       progress,
       '推送',
       progress.push.failed > 0 ? 'failed' : 'succeeded',
-      pushError ? `飞书推送失败：${pushError}` : `飞书推送成功 ${pushed}/${recommendations.length}`,
+      pushError ? `飞书推送失败：${pushError}` : `飞书推送成功 ${pushed}/${persistedRecommendations.length}`,
       progress.push
     );
 
     return {
       aggregation: this.formatAggregationStats(aggregation),
-      recommendations: recommendations.length,
+      recommendations: persistedRecommendations.length,
       pushed,
     };
   }

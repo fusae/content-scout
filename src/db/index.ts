@@ -36,6 +36,7 @@ export interface ContentPool {
 
 export interface Recommendation {
   id?: number;
+  user_id?: string;
   content_id: number;
   match_score: number;
   match_reason?: string;
@@ -43,6 +44,16 @@ export interface Recommendation {
   recommended_at?: string;
   status?: string;
   user_feedback?: string;
+}
+
+export interface RecommendationWithContent extends Recommendation {
+  source: string;
+  title?: string;
+  content: string;
+  url?: string;
+  author?: string;
+  published_at?: string;
+  collected_at?: string;
 }
 
 export interface FeedbackLog {
@@ -132,7 +143,17 @@ export class DatabaseManager {
     const schemaPath = join(__dirname, 'schema.sql');
     const schema = readFileSync(schemaPath, 'utf-8');
     this.db.exec(schema);
+    this.migrate();
     logger.info('Database schema initialized successfully');
+  }
+
+  private migrate(): void {
+    const columns = this.db.prepare('PRAGMA table_info(recommendations)').all() as Array<{ name: string }>;
+    const columnNames = new Set(columns.map((column) => column.name));
+    if (!columnNames.has('user_id')) {
+      this.db.exec('ALTER TABLE recommendations ADD COLUMN user_id TEXT');
+    }
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_recommendations_user_id ON recommendations(user_id, recommended_at)');
   }
 
   /**
@@ -273,10 +294,11 @@ export class DatabaseManager {
    */
   insertRecommendation(recommendation: Recommendation): number {
     const stmt = this.db.prepare(`
-      INSERT INTO recommendations (content_id, match_score, match_reason, drafts, status)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO recommendations (user_id, content_id, match_score, match_reason, drafts, status)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
+      recommendation.user_id || null,
       recommendation.content_id,
       recommendation.match_score,
       recommendation.match_reason || null,
@@ -305,6 +327,26 @@ export class DatabaseManager {
   getRecommendationById(id: number): Recommendation | undefined {
     const stmt = this.db.prepare('SELECT * FROM recommendations WHERE id = ?');
     return stmt.get(id) as Recommendation | undefined;
+  }
+
+  listRecommendationsWithContent(userId: string, limit: number = 20): RecommendationWithContent[] {
+    const stmt = this.db.prepare(`
+      SELECT
+        r.*,
+        c.source,
+        c.title,
+        c.content,
+        c.url,
+        c.author,
+        c.published_at,
+        c.collected_at
+      FROM recommendations r
+      JOIN content_pool c ON c.id = r.content_id
+      WHERE r.user_id = ? OR (r.user_id IS NULL AND ? = 'local')
+      ORDER BY r.recommended_at DESC
+      LIMIT ?
+    `);
+    return stmt.all(userId, userId, limit) as RecommendationWithContent[];
   }
 
   /**

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS content_pool (
 -- 推荐记录表
 CREATE TABLE IF NOT EXISTS recommendations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT,
   content_id INTEGER NOT NULL,
   match_score REAL NOT NULL,
   match_reason TEXT,
