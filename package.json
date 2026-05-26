@@ -36,10 +36,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fusae/content-scout.git"
+    "url": "git+https://github.com/fusae/Spark.git"
   },
   "build": {
-    "appId": "io.github.fusae.content-scout",
+    "appId": "io.github.fusae.spark",
     "productName": "Spark",
     "icon": "assets/spark-icon.png",
     "asar": false,
@@ -51,7 +51,7 @@
       {
         "provider": "github",
         "owner": "fusae",
-        "repo": "content-scout",
+        "repo": "Spark",
         "releaseType": "release"
       }
     ],
