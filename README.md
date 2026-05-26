@@ -25,6 +25,18 @@ npm run desktop:dist
 
 产物会输出到 `release/`。
 
+生成指定平台安装包：
+
+```bash
+npm run desktop:dist:mac
+npm run desktop:dist:win
+npm run desktop:dist:linux
+```
+
+Windows 用户也可以下载源码后双击 `Build-Windows.cmd`，脚本会自动安装依赖并生成 Windows 安装包。
+
+也可以直接用 GitHub Actions 构建：推送 `v*` 标签后，`.github/workflows/desktop-release.yml` 会分别在 macOS 和 Windows 环境生成安装包并上传到 GitHub Release。
+
 ### Web 管理后台
 
 ```bash
@@ -62,8 +74,20 @@ FEISHU_DEFAULT_RECEIVER_ID=your_open_id_or_chat_id
 - `npm run desktop`：启动桌面管理壳
 - `npm run build`：编译 TypeScript
 - `npm run desktop:dist`：生成安装包
+- `npm run desktop:dist:win`：生成 Windows 安装包
 - `npm run db:init`：初始化数据库
 - `npm run lint`：代码检查
+
+## 自动更新
+
+桌面安装版会从 GitHub Releases 检查更新。发布新版本时，更新 `package.json` 里的 `version`，运行打包命令，然后把 `release/` 里的安装包和更新元数据上传到 GitHub Release。
+
+使用自动发布：
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
 
 ## 数据库表结构
 

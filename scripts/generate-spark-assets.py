@@ -153,6 +153,11 @@ icon.save(ASSETS / "spark-icon.png")
 for size in [512, 256, 128, 64, 32, 16]:
     icon.resize((size, size), Image.LANCZOS).save(ASSETS / f"spark-icon-{size}.png")
 
+icon.save(
+    ASSETS / "spark-icon.ico",
+    sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)],
+)
+
 iconset = ASSETS / "spark-icon.iconset"
 if iconset.exists():
     shutil.rmtree(iconset)

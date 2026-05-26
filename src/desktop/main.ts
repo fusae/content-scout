@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { spawn, type ChildProcess } from 'child_process';
 import { createServer, get as httpGet } from 'http';
 import { createWriteStream, mkdirSync } from 'fs';
@@ -11,6 +12,7 @@ let adminLogPath = '';
 let adminPort = 0;
 let restartAttempts = 0;
 let isQuitting = false;
+let manualUpdateCheck = false;
 
 async function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -146,6 +148,91 @@ function showBackendExitDialog(code: number | null, extraDetail = ''): void {
   });
 }
 
+function showMessage(options: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
+  return mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options);
+}
+
+function checkForUpdates(manual = false): void {
+  if (!app.isPackaged) {
+    if (manual) {
+      void showMessage({
+        type: 'info',
+        title: 'Spark',
+        message: '开发模式不会检查更新',
+        detail: '打包后的安装版会从 GitHub Releases 检查新版本。',
+      });
+    }
+    return;
+  }
+
+  manualUpdateCheck = manual;
+  autoUpdater.checkForUpdates().catch((error: Error) => {
+    if (manual) {
+      void showMessage({
+        type: 'error',
+        title: 'Spark 更新失败',
+        message: '检查更新失败',
+        detail: error.message,
+      });
+    }
+  });
+}
+
+function setupAutoUpdater(): void {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    void showMessage({
+      type: 'info',
+      title: 'Spark 有新版本',
+      message: `发现 Spark ${info.version}`,
+      detail: '正在后台下载，下载完成后会提示重启。',
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    if (manualUpdateCheck) {
+      void showMessage({
+        type: 'info',
+        title: 'Spark',
+        message: '当前已经是最新版本',
+      });
+    }
+    manualUpdateCheck = false;
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    manualUpdateCheck = false;
+    void showMessage({
+      type: 'info',
+      buttons: ['重启更新', '稍后'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Spark 更新已下载',
+      message: `Spark ${info.version} 已准备好`,
+      detail: '重启应用后生效。',
+    }).then(({ response }) => {
+      if (response === 0) {
+        isQuitting = true;
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (error) => {
+    if (manualUpdateCheck) {
+      void showMessage({
+        type: 'error',
+        title: 'Spark 更新失败',
+        message: '检查更新失败',
+        detail: error.message,
+      });
+    }
+    manualUpdateCheck = false;
+  });
+}
+
 function createMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -158,6 +245,10 @@ function createMenu(): void {
               void shell.openExternal(adminUrl);
             }
           },
+        },
+        {
+          label: '检查更新',
+          click: () => checkForUpdates(true),
         },
         { type: 'separator' },
         { role: 'quit', label: '退出' },
@@ -221,6 +312,8 @@ app.whenReady()
     }
     createMenu();
     await createWindow();
+    setupAutoUpdater();
+    setTimeout(() => checkForUpdates(), 3000);
   })
   .catch((error: Error) => {
     void dialog.showErrorBox('Spark 启动失败', error.message);

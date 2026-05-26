@@ -12,6 +12,9 @@
     "desktop": "npm run build && electron dist/desktop/main.js",
     "desktop:pack": "node scripts/package-desktop.mjs --dir",
     "desktop:dist": "node scripts/package-desktop.mjs",
+    "desktop:dist:mac": "node scripts/package-desktop.mjs --mac",
+    "desktop:dist:win": "node scripts/package-desktop.mjs --win",
+    "desktop:dist:linux": "node scripts/package-desktop.mjs --linux",
     "desktop:rebuild": "electron-builder install-app-deps",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
@@ -31,14 +34,27 @@
   ],
   "author": "",
   "license": "MIT",
-    "build": {
-    "appId": "app.spark.local",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fusae/content-scout.git"
+  },
+  "build": {
+    "appId": "io.github.fusae.content-scout",
     "productName": "Spark",
     "icon": "assets/spark-icon.png",
     "asar": false,
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "fusae",
+        "repo": "content-scout",
+        "releaseType": "release"
+      }
+    ],
     "files": [
       "dist/**/*",
       "assets/**/*",
@@ -54,9 +70,29 @@
       "category": "public.app-category.productivity"
     },
     "win": {
+      "icon": "assets/spark-icon.ico",
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Spark"
     },
     "linux": {
       "target": [
@@ -71,6 +107,7 @@
     "axios": "^1.6.7",
     "better-sqlite3": "^9.4.0",
     "dotenv": "^16.4.0",
+    "electron-updater": "^6.8.3",
     "node-cron": "^3.0.3",
     "openai": "^4.28.0",
     "p-limit": "^5.0.0",

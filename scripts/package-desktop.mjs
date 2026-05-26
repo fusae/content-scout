@@ -7,6 +7,7 @@ const root = process.cwd();
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const electronVersion = String(pkg.devDependencies?.electron || '').replace(/^[^\d]*/, '');
 const args = process.argv.slice(2);
+const wantsWindows = args.includes('--win') || args.includes('-w') || args.some((arg) => arg.startsWith('--windows'));
 
 function bin(name) {
   const ext = process.platform === 'win32' ? '.cmd' : '';
@@ -32,6 +33,10 @@ if (!electronVersion) {
 
 if (!existsSync(bin('electron-rebuild')) || !existsSync(bin('electron-builder'))) {
   throw new Error('Desktop packaging dependencies are missing. Run npm install first.');
+}
+
+if (wantsWindows && process.platform !== 'win32') {
+  throw new Error('Windows packages must be built on Windows because Spark uses native SQLite dependencies. Use Build-Windows.cmd or GitHub Actions.');
 }
 
 let failure;
