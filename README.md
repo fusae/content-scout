@@ -33,7 +33,9 @@ npm run desktop:dist:win
 npm run desktop:dist:linux
 ```
 
-Windows 用户也可以下载源码后双击 `Build-Windows.cmd`，脚本会自动安装依赖并生成 Windows 安装包。
+Windows 用户需要先安装 Node.js 20+，然后下载源码，在 Windows 本机双击 `Build-Windows.cmd`；脚本会自动安装依赖并生成 Windows 安装包到 `release/`。
+
+因为 Spark 使用原生 SQLite 依赖，Windows 安装包建议在 Windows 本机或 GitHub Actions 的 Windows 环境构建。
 
 也可以直接用 GitHub Actions 构建：推送 `v*` 标签后，`.github/workflows/desktop-release.yml` 会分别在 macOS 和 Windows 环境生成安装包并上传到 GitHub Release。
 
