@@ -1,9 +1,11 @@
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
-import { autoUpdater } from 'electron-updater';
+import electronUpdater from 'electron-updater';
 import { spawn, type ChildProcess } from 'child_process';
 import { createServer, get as httpGet } from 'http';
 import { createWriteStream, mkdirSync } from 'fs';
 import { join } from 'path';
+
+const { autoUpdater } = electronUpdater;
 
 let mainWindow: BrowserWindow | null = null;
 let adminProcess: ChildProcess | null = null;
