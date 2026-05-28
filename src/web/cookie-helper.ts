@@ -2,6 +2,7 @@ import { mkdirSync } from 'fs';
 import { resolve } from 'path';
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { logger } from '../utils/logger.js';
+import { localBrowserLaunchOptions } from '../utils/browser-launcher.js';
 
 export type CookiePlatform = 'douyin' | 'xiaohongshu' | 'zhihu' | 'weibo';
 
@@ -37,14 +38,15 @@ const PLATFORM_CONFIGS: Record<CookiePlatform, PlatformLoginConfig> = {
   },
   xiaohongshu: {
     label: '小红书',
-    url: 'https://www.xiaohongshu.com/',
+    url: 'https://www.xiaohongshu.com/search_result?keyword=AI&source=web_search_result_notes',
     cookieUrls: [
       'https://www.xiaohongshu.com/',
       'https://edith.xiaohongshu.com/',
     ],
     loggedInSelectors: [
-      'a[href*="/user/profile"]',
-      '.user.side-bar-component',
+      'section.note-item',
+      'a[href*="/explore/"]',
+      'a[href*="/user/profile/"]',
     ],
   },
   zhihu: {
@@ -90,16 +92,7 @@ export class CookieHelper {
     const userDataDir = this.getUserDataDir(options.userId, platform);
     mkdirSync(userDataDir, { recursive: true });
 
-    const browser = await puppeteer.launch({
-      headless: false,
-      userDataDir,
-      defaultViewport: { width: 1280, height: 900 },
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-blink-features=AutomationControlled',
-      ],
-    });
+    const browser = await puppeteer.launch(localBrowserLaunchOptions(userDataDir));
     this.browsers.add(browser);
 
     try {
@@ -179,6 +172,10 @@ export class CookieHelper {
       return false;
     }
 
+    if (platform === 'xiaohongshu') {
+      return this.hasRequiredCookies(cookies, platform) && this.hasLoggedInSelector(page, platform);
+    }
+
     if (this.hasRequiredCookies(cookies, platform)) {
       if (platform === 'douyin' || platform === 'zhihu') {
         return true;
@@ -191,6 +188,13 @@ export class CookieHelper {
   }
 
   private async hasLoggedInSelector(page: Page, platform: CookiePlatform): Promise<boolean> {
+    if (platform === 'xiaohongshu') {
+      const text = await page.evaluate(() => document.body.innerText || '').catch(() => '');
+      if (/登录后查看搜索结果|手机号登录|扫码|获取验证码/.test(text)) {
+        return false;
+      }
+    }
+
     for (const selector of PLATFORM_CONFIGS[platform].loggedInSelectors) {
       if (await page.$(selector).catch(() => null)) {
         return true;
@@ -206,8 +210,9 @@ export class CookieHelper {
 
     switch (platform) {
       case 'douyin':
-        return hasCookie(['sessionid', 'sessionid_ss', 'sid_guard']) &&
-          hasCookie(['uid_tt', 'uid_tt_ss', 'sid_tt', 'passport_auth_status']);
+        return hasCookie(['sessionid', 'sessionid_ss', 'sid_guard']) ||
+          hasCookie(['passport_auth_status', 'passport_auth_status_ss']) ||
+          (hasCookie(['uid_tt', 'uid_tt_ss']) && hasCookie(['sid_tt']));
       case 'xiaohongshu':
         return hasCookie(['web_session']);
       case 'zhihu':

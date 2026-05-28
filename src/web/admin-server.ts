@@ -13,11 +13,17 @@ import { RuntimeWorker } from '../runtime/worker.js';
 import { sourceNames, UserRuntimeConfig } from '../types/runtime-config.js';
 import { logger } from '../utils/logger.js';
 import { CookieHelper, isCookiePlatform } from './cookie-helper.js';
+import { isAiCredential, validateAiCredential, validateCredential } from './credential-validator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 type JsonBody = Record<string, unknown>;
+type PublicCredentialCheck = {
+  status: 'unknown' | 'valid' | 'invalid';
+  message: string;
+  checkedAt: string;
+} | null;
 type ProfileFormData = {
   bio?: unknown;
   topics?: unknown;
@@ -149,6 +155,16 @@ class AdminServer {
         return;
       }
 
+      const userContentMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/content$/);
+      if (userContentMatch && method === 'GET') {
+        this.json(res, this.listRecentContent(
+          userContentMatch[1],
+          Number(url.searchParams.get('limit') || 50),
+          url.searchParams.get('source') || ''
+        ));
+        return;
+      }
+
       const recommendationStatusMatch = url.pathname.match(/^\/api\/recommendations\/(\d+)\/status$/);
       if (recommendationStatusMatch && method === 'POST') {
         const body = await this.readJson(req);
@@ -171,8 +187,35 @@ class AdminServer {
       }
 
       if (credentialMatch && method === 'DELETE') {
-        this.db.deleteRuntimeCredential(credentialMatch[1], `${credentialMatch[2]}_cookie`);
+        this.deleteCredential(credentialMatch[1], credentialMatch[2]);
         this.json(res, { ok: true });
+        return;
+      }
+
+      const validateCredentialMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/credentials\/([^/]+)\/validate$/);
+      if (validateCredentialMatch && method === 'POST') {
+        const userId = validateCredentialMatch[1];
+        const platform = validateCredentialMatch[2];
+
+        const validation = isCookiePlatform(platform)
+          ? await validateCredential(platform, this.getRuntimeConfig(userId))
+          : isAiCredential(platform)
+            ? await validateAiCredential(platform, this.getRuntimeConfig(userId))
+            : null;
+        if (!validation) {
+          this.json(res, { error: `Unsupported credential: ${platform}` }, 400);
+          return;
+        }
+        this.db.upsertRuntimeCredentialCheck({
+          user_id: userId,
+          platform,
+          status: validation.status,
+          message: validation.message,
+        });
+        this.json(res, {
+          validation,
+          config: this.publicConfig(this.getRuntimeConfig(userId)),
+        });
         return;
       }
 
@@ -269,7 +312,7 @@ class AdminServer {
   private getRuntimeConfig(userId: string): UserRuntimeConfig {
     const runtimeConfig = this.repository.get(userId);
     if (runtimeConfig) {
-      return this.withLocalAiFallback(userId, runtimeConfig);
+      return runtimeConfig;
     }
 
     return this.defaultConfig(userId);
@@ -282,6 +325,7 @@ class AdminServer {
   private saveUser(userId: string, body: JsonBody): unknown {
     const runtimeConfig = this.normalizeConfig(userId, body);
     this.repository.save(runtimeConfig);
+    this.resetCredentialChecksForIncomingConfig(userId, body);
     return this.publicConfig(runtimeConfig);
   }
 
@@ -320,6 +364,29 @@ class AdminServer {
     }));
   }
 
+  private listRecentContent(userId: string, limit: number, source: string): unknown[] {
+    const runtimeConfig = this.repository.get(userId);
+    const enabledSources = new Set(
+      sourceNames.filter((sourceName) => runtimeConfig?.sources[sourceName]?.enabled)
+    );
+    const selectedSource = sourceNames.includes(source as never) ? source : '';
+    return this.db.getRecentContent(Math.max(1, Math.min((limit || 50) * 3, 300)))
+      .filter((item) => !selectedSource || item.source === selectedSource)
+      .filter((item) => enabledSources.size === 0 || enabledSources.has(item.source as never))
+      .slice(0, Math.max(1, Math.min(limit || 50, 100)))
+      .map((item) => ({
+        id: item.id,
+        source: item.source,
+        title: item.title,
+        content: item.content,
+        url: item.url,
+        author: item.author,
+        publishedAt: item.published_at,
+        collectedAt: item.collected_at,
+        metrics: this.safeJson(item.metrics, {}),
+      }));
+  }
+
   private safeJson(value: string | undefined, fallback: unknown): unknown {
     if (!value) return fallback;
     try {
@@ -348,12 +415,67 @@ class AdminServer {
     } else if (platform === 'weibo') {
       runtimeConfig.sources.weibo.cookie = value;
       runtimeConfig.sources.weibo.enabled = true;
+    } else if (platform === 'embedding') {
+      runtimeConfig.ai.embedding.apiKey = value;
+    } else if (platform === 'deepseek') {
+      runtimeConfig.ai.deepseek.apiKey = value;
     } else {
       throw new Error(`Unsupported platform credential: ${platform}`);
     }
 
     this.repository.save(runtimeConfig);
+    if (isCookiePlatform(platform) || isAiCredential(platform)) {
+      this.db.upsertRuntimeCredentialCheck({
+        user_id: userId,
+        platform,
+        status: 'unknown',
+        message: isCookiePlatform(platform) ? '已保存登录态，等待验证' : '已保存 API Key，等待验证',
+      });
+    }
     return runtimeConfig;
+  }
+
+  private deleteCredential(userId: string, credential: string): void {
+    const credentialKey = this.runtimeCredentialKey(credential);
+    if (!credentialKey) {
+      throw new Error(`Unsupported credential: ${credential}`);
+    }
+
+    this.db.deleteRuntimeCredential(userId, credentialKey);
+    this.db.deleteRuntimeCredentialCheck(userId, credential);
+  }
+
+  private runtimeCredentialKey(credential: string): string {
+    if (isCookiePlatform(credential)) {
+      return `${credential}_cookie`;
+    }
+    if (credential === 'embedding') {
+      return 'embedding_api_key';
+    }
+    if (credential === 'deepseek') {
+      return 'deepseek_api_key';
+    }
+    return '';
+  }
+
+  private resetCredentialChecksForIncomingConfig(userId: string, body: JsonBody): void {
+    const incoming = body as Partial<UserRuntimeConfig>;
+    if (Object.prototype.hasOwnProperty.call(incoming.ai?.embedding || {}, 'apiKey')) {
+      this.db.upsertRuntimeCredentialCheck({
+        user_id: userId,
+        platform: 'embedding',
+        status: 'unknown',
+        message: '已更新内容筛选 API Key，等待验证',
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(incoming.ai?.deepseek || {}, 'apiKey')) {
+      this.db.upsertRuntimeCredentialCheck({
+        user_id: userId,
+        platform: 'deepseek',
+        status: 'unknown',
+        message: '已更新内容创作 API Key，等待验证',
+      });
+    }
   }
 
   private getProfile(userId: string): unknown {
@@ -509,27 +631,19 @@ class AdminServer {
 
   private defaultConfig(userId: string): UserRuntimeConfig {
     const base = JSON.parse(JSON.stringify(localRuntimeConfig)) as UserRuntimeConfig;
-    return userId === localRuntimeConfig.userId
+    const runtimeConfig = userId === localRuntimeConfig.userId
       ? { ...base, userId }
       : this.blankConfigFromBase(userId, base);
-  }
-
-  private withLocalAiFallback(userId: string, runtimeConfig: UserRuntimeConfig): UserRuntimeConfig {
-    if (userId !== localRuntimeConfig.userId) {
-      return runtimeConfig;
-    }
-
     return {
       ...runtimeConfig,
       ai: {
         embedding: {
-          apiKey: runtimeConfig.ai.embedding.apiKey || localRuntimeConfig.ai.embedding.apiKey,
-          baseURL: runtimeConfig.ai.embedding.baseURL || localRuntimeConfig.ai.embedding.baseURL,
-          model: runtimeConfig.ai.embedding.model || localRuntimeConfig.ai.embedding.model,
+          ...runtimeConfig.ai.embedding,
+          apiKey: '',
         },
         deepseek: {
-          apiKey: runtimeConfig.ai.deepseek.apiKey || localRuntimeConfig.ai.deepseek.apiKey,
-          baseURL: runtimeConfig.ai.deepseek.baseURL || localRuntimeConfig.ai.deepseek.baseURL,
+          ...runtimeConfig.ai.deepseek,
+          apiKey: '',
         },
       },
     };
@@ -594,6 +708,7 @@ class AdminServer {
 
   private publicConfig(configForUser: UserRuntimeConfig): unknown {
     const clone = JSON.parse(JSON.stringify(configForUser)) as UserRuntimeConfig;
+    const credentialChecks = this.credentialChecks(configForUser.userId);
     const status = {
       larkAppSecret: Boolean(configForUser.lark.appSecret),
       zhihuCookie: Boolean(configForUser.sources.zhihu.cookie),
@@ -601,8 +716,8 @@ class AdminServer {
       douyinTikTokDownloaderToken: Boolean(configForUser.sources.douyin.tiktokDownloaderToken),
       xiaohongshuCookie: Boolean(configForUser.sources.xiaohongshu.cookie),
       weiboCookie: Boolean(configForUser.sources.weibo.cookie),
-      embeddingApiKey: Boolean(configForUser.ai.embedding.apiKey),
-      deepseekApiKey: Boolean(configForUser.ai.deepseek.apiKey),
+      embeddingApiKey: this.credentialUsable(Boolean(configForUser.ai.embedding.apiKey), credentialChecks.embedding),
+      deepseekApiKey: this.credentialUsable(Boolean(configForUser.ai.deepseek.apiKey), credentialChecks.deepseek),
     };
 
     clone.lark.appSecret = '';
@@ -617,7 +732,34 @@ class AdminServer {
     return {
       ...clone,
       credentialStatus: status,
+      credentialChecks,
     };
+  }
+
+  private credentialChecks(userId: string): Record<string, PublicCredentialCheck> {
+    const checks = Object.fromEntries(
+      this.db.getRuntimeCredentialChecks(userId).map((check) => [
+        check.platform,
+        {
+          status: check.status,
+          message: check.message || '',
+          checkedAt: check.checked_at || '',
+        },
+      ])
+    ) as Record<string, PublicCredentialCheck>;
+
+    return {
+      douyin: checks.douyin || null,
+      xiaohongshu: checks.xiaohongshu || null,
+      zhihu: checks.zhihu || null,
+      weibo: checks.weibo || null,
+      embedding: checks.embedding || null,
+      deepseek: checks.deepseek || null,
+    };
+  }
+
+  private credentialUsable(hasCredential: boolean, check: PublicCredentialCheck): boolean {
+    return hasCredential && check?.status !== 'invalid';
   }
 
   private shouldShowOnboarding(userId: string): boolean {
@@ -982,6 +1124,21 @@ class AdminServer {
               <div id="recommendationsList" class="space-y-4">
                 <div class="text-gray-500">加载中...</div>
               </div>
+
+              <div class="mt-8 border-t border-gray-200 pt-6">
+                <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h3 class="text-lg font-semibold text-gray-900">最新抓取内容</h3>
+                    <p class="mt-1 text-sm text-gray-500">这里显示已经入库的原始内容，推荐卡片会从这些内容里筛选生成。</p>
+                  </div>
+                  <select id="contentSourceFilter" onchange="loadRecommendations()" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm md:w-48">
+                    <option value="">全部平台</option>
+                  </select>
+                </div>
+                <div id="rawContentList" class="space-y-3">
+                  <div class="text-gray-500">加载中...</div>
+                </div>
+              </div>
             </div>
 
             <!-- Config Tab -->
@@ -1015,7 +1172,12 @@ class AdminServer {
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Embedding API Key</label>
-                        <input id="configEmbeddingApiKey" type="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="阿里云百炼 API Key">
+                        <div class="flex gap-2">
+                          <input id="configEmbeddingApiKey" type="password" class="min-w-0 flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="阿里云百炼 API Key">
+                          <button onclick="validateAiCredential('embedding')" class="px-3 py-2 text-sm rounded-md bg-emerald-600 text-white hover:bg-emerald-700">验证</button>
+                          <button onclick="clearCredential('embedding')" class="px-3 py-2 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50">清空</button>
+                        </div>
+                        <p id="configEmbeddingStatus" class="mt-1 text-xs text-gray-500">未配置</p>
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Embedding Base URL</label>
@@ -1029,7 +1191,12 @@ class AdminServer {
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">DeepSeek API Key</label>
-                        <input id="configDeepseekApiKey" type="password" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="DeepSeek API Key">
+                        <div class="flex gap-2">
+                          <input id="configDeepseekApiKey" type="password" class="min-w-0 flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="DeepSeek API Key">
+                          <button onclick="validateAiCredential('deepseek')" class="px-3 py-2 text-sm rounded-md bg-emerald-600 text-white hover:bg-emerald-700">验证</button>
+                          <button onclick="clearCredential('deepseek')" class="px-3 py-2 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50">清空</button>
+                        </div>
+                        <p id="configDeepseekStatus" class="mt-1 text-xs text-gray-500">未配置</p>
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">DeepSeek Base URL</label>
@@ -1047,19 +1214,19 @@ class AdminServer {
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">知乎关键词</label>
-                        <input id="configZhihuKeywords" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
+                        <input id="configZhihuKeywords" type="text" class="w-full select-text px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">抖音关键词</label>
-                        <input id="configDouyinKeywords" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
+                        <input id="configDouyinKeywords" type="text" class="w-full select-text px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">小红书关键词</label>
-                        <input id="configXiaohongshuKeywords" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
+                        <input id="configXiaohongshuKeywords" type="text" class="w-full select-text px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">微博关键词</label>
-                        <input id="configWeiboKeywords" type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
+                        <input id="configWeiboKeywords" type="text" class="w-full select-text px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="逗号分隔">
                       </div>
                     </div>
                     <div>
@@ -1331,6 +1498,17 @@ class AdminServer {
       { id: 'weibo', name: '微博', icon: '微', color: 'bg-yellow-500', needsAuth: 'cookie', description: '需要登录' }
     ];
 
+    function updateContentSourceFilter(config) {
+      const select = document.getElementById('contentSourceFilter');
+      if (!select || !config) return;
+      const current = select.value;
+      select.innerHTML = '<option value="">全部平台</option>' + platforms
+        .filter(platform => config.sources?.[platform.id]?.enabled)
+        .map(platform => \`<option value="\${platform.id}">\${platform.name}</option>\`)
+        .join('');
+      select.value = Array.from(select.options).some(option => option.value === current) ? current : '';
+    }
+
     // Toast notification
     function showToast(message, type = 'success') {
       const toast = document.getElementById('toast');
@@ -1561,6 +1739,7 @@ class AdminServer {
       updateOverview(data);
       updatePlatformStatus(data);
       loadConfigIntoForm(data);
+      updateContentSourceFilter(data);
 
       try {
         const profile = await request(\`/api/users/\${encodeURIComponent(id)}/profile\`);
@@ -1620,7 +1799,8 @@ class AdminServer {
           ? Boolean(config.credentialStatus?.[\`\${platform.id}Cookie\`])
           : true;
         const stat = bySource.get(platform.id);
-        const health = platformHealth(platform, enabled, hasAuth, stat);
+        const check = credentialCheck(config, platform.id);
+        const health = platformHealth(platform, enabled, hasAuth, stat, check);
 
         return \`
           <div class="border \${health.border} \${health.bg} rounded-lg p-3">
@@ -1639,7 +1819,7 @@ class AdminServer {
       }).join('');
     }
 
-    function platformHealth(platform, enabled, hasAuth, stat) {
+    function platformHealth(platform, enabled, hasAuth, stat, check) {
       if (!enabled) {
         return {
           dot: 'bg-gray-300',
@@ -1662,19 +1842,34 @@ class AdminServer {
         };
       }
 
-      if (!stat) {
+      if (platform.needsAuth === 'cookie' && check?.status === 'invalid') {
         return {
-          dot: 'bg-blue-500',
-          bg: 'bg-blue-50',
-          border: 'border-blue-100',
-          text: 'text-blue-700',
-          message: '等待首次运行',
+          dot: 'bg-red-500',
+          bg: 'bg-red-50',
+          border: 'border-red-100',
+          text: 'text-red-700',
+          message: check.message || '登录态失效，需要重新登录',
+          action: \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\`,
+          actionLabel: '重新登录',
+        };
+      }
+
+      if (!stat) {
+        const needsValidation = platform.needsAuth === 'cookie' && check?.status !== 'valid';
+        return {
+          dot: needsValidation ? 'bg-yellow-500' : 'bg-blue-500',
+          bg: needsValidation ? 'bg-yellow-50' : 'bg-blue-50',
+          border: needsValidation ? 'border-yellow-100' : 'border-blue-100',
+          text: needsValidation ? 'text-yellow-700' : 'text-blue-700',
+          message: needsValidation ? '登录态未验证' : '等待首次运行',
+          action: needsValidation ? \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\` : '',
+          actionLabel: '去验证',
         };
       }
 
       if (Number(stat.errors || 0) > 0) {
         const failureType = stat.failureType || '';
-        const needsLogin = failureType === 'auth_required' || platform.needsAuth === 'cookie';
+        const needsLogin = failureType === 'auth_required';
         const isPlatformChanged = failureType === 'platform_changed';
         return {
           dot: isPlatformChanged ? 'bg-yellow-500' : 'bg-red-500',
@@ -1749,9 +1944,7 @@ class AdminServer {
           : true;
         const isSelected = selectedPlatformId === platform.id;
 
-        const statusBadge = !platform.needsAuth || hasAuth
-          ? '<span class="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">可用</span>'
-          : '<span class="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">需配置</span>';
+        const statusBadge = platformStatusBadge(platform, isEnabled, hasAuth, credentialCheck(config, platform.id));
 
         const toggleClass = isEnabled ? 'bg-blue-600' : 'bg-gray-200';
         const toggleSpanClass = isEnabled ? 'translate-x-6' : 'translate-x-1';
@@ -1796,6 +1989,60 @@ class AdminServer {
       renderPlatformCredentialPanel(config);
     }
 
+    function credentialCheck(config, platformId) {
+      return config.credentialChecks?.[platformId] || null;
+    }
+
+    function renderAiCredentialStatus(kind, config) {
+      const elementId = kind === 'embedding' ? 'configEmbeddingStatus' : 'configDeepseekStatus';
+      const label = kind === 'embedding' ? '内容筛选' : '内容创作';
+      const hasKey = kind === 'embedding'
+        ? Boolean(config.credentialStatus?.embeddingApiKey)
+        : Boolean(config.credentialStatus?.deepseekApiKey);
+      const check = credentialCheck(config, kind);
+      const element = document.getElementById(elementId);
+      if (!element) return;
+
+      if (!hasKey) {
+        element.textContent = check?.status === 'invalid' ? check.message : \`\${label} API Key 未配置\`;
+        element.className = 'mt-1 text-xs text-gray-500';
+      } else if (check?.status === 'valid') {
+        element.textContent = check.message || \`\${label} API Key 可用\`;
+        element.className = 'mt-1 text-xs text-green-700';
+      } else if (check?.status === 'invalid') {
+        element.textContent = check.message || \`\${label} API Key 不可用\`;
+        element.className = 'mt-1 text-xs text-red-700';
+      } else {
+        element.textContent = check?.message || \`\${label} API Key 已保存，建议验证一次\`;
+        element.className = 'mt-1 text-xs text-yellow-700';
+      }
+    }
+
+    function platformStatusBadge(platform, isEnabled, hasAuth, check) {
+      if (!isEnabled) {
+        return '<span class="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded">未启用</span>';
+      }
+
+      if (platform.needsAuth === 'cookie' && !hasAuth) {
+        return '<span class="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">需登录</span>';
+      }
+
+      if (platform.needsAuth === 'cookie') {
+        if (check?.status === 'valid') {
+          return '<span class="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">可用</span>';
+        }
+        if (check?.status === 'invalid') {
+          return '<span class="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded">登录失效</span>';
+        }
+        if (check?.status === 'checking') {
+          return '<span class="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 rounded">验证中</span>';
+        }
+        return '<span class="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">未验证</span>';
+      }
+
+      return '<span class="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">可用</span>';
+    }
+
     function selectPlatformCredential(platformId) {
       selectedPlatformId = platformId;
       updatePlatformStatus(currentConfig);
@@ -1810,6 +2057,7 @@ class AdminServer {
       }
 
       const hasAuth = Boolean(config.credentialStatus?.[\`\${platform.id}Cookie\`]);
+      const checkMeta = credentialCheckMeta(hasAuth, credentialCheck(config, platform.id));
       panel.classList.remove('hidden');
       panel.innerHTML = \`
         <div class="flex items-center justify-between mb-3">
@@ -1817,11 +2065,12 @@ class AdminServer {
             <div class="w-8 h-8 \${platform.color} rounded-md flex items-center justify-center text-white font-bold text-xs">\${platform.icon}</div>
             <div class="ml-3">
               <h3 class="font-semibold text-gray-900">\${platform.name} 登录配置</h3>
-              <p class="text-xs text-gray-500">仅本地部署可用，登录态保存在本机数据目录</p>
+              <p class="text-xs text-gray-500">仅本地部署可用，登录窗口最多等待 5 分钟，登录态保存在本机数据目录</p>
             </div>
           </div>
-          <span class="px-2 py-1 text-xs font-medium rounded \${hasAuth ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">\${hasAuth ? '已连接' : '未连接'}</span>
+          <span class="px-2 py-1 text-xs font-medium rounded \${checkMeta.className}">\${checkMeta.label}</span>
         </div>
+        <div class="mb-3 text-xs \${checkMeta.textClass}">\${checkMeta.message}</div>
         <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-2">
           <input
             id="\${platform.id}Cookie"
@@ -1835,8 +2084,56 @@ class AdminServer {
           <button onclick="launchLogin('\${platform.id}')" class="bg-blue-600 text-white px-4 py-2 text-sm rounded-md hover:bg-blue-700 transition">
             本地辅助登录
           </button>
+          <button onclick="validatePlatformCredential('\${platform.id}')" class="bg-emerald-600 text-white px-4 py-2 text-sm rounded-md hover:bg-emerald-700 transition \${hasAuth ? '' : 'opacity-50 cursor-not-allowed'}" \${hasAuth ? '' : 'disabled'}>
+            验证登录
+          </button>
         </div>
       \`;
+    }
+
+    function credentialCheckMeta(hasAuth, check) {
+      if (!hasAuth) {
+        return {
+          label: '未连接',
+          message: '还没有保存登录态，请先登录或粘贴 Cookie。',
+          className: 'bg-yellow-100 text-yellow-800',
+          textClass: 'text-yellow-700',
+        };
+      }
+
+      if (check?.status === 'valid') {
+        return {
+          label: '可用',
+          message: check.message || '登录态已验证可用。',
+          className: 'bg-green-100 text-green-800',
+          textClass: 'text-green-700',
+        };
+      }
+
+      if (check?.status === 'invalid') {
+        return {
+          label: '登录失效',
+          message: check.message || 'Cookie 已失效，需要重新登录。',
+          className: 'bg-red-100 text-red-800',
+          textClass: 'text-red-700',
+        };
+      }
+
+      if (check?.status === 'checking') {
+        return {
+          label: '验证中',
+          message: '正在验证登录态是否可用。',
+          className: 'bg-blue-100 text-blue-800',
+          textClass: 'text-blue-700',
+        };
+      }
+
+      return {
+        label: '未验证',
+        message: check?.message || '已保存 Cookie，但还没有验证是否可用。',
+        className: 'bg-yellow-100 text-yellow-800',
+        textClass: 'text-yellow-700',
+      };
     }
 
     // Toggle platform enabled/disabled
@@ -1909,11 +2206,13 @@ class AdminServer {
       embeddingApiKeyInput.placeholder = config.credentialStatus?.embeddingApiKey
         ? '已配置，留空保持不变'
         : '阿里云百炼 API Key';
+      renderAiCredentialStatus('embedding', config);
       const deepseekApiKeyInput = document.getElementById('configDeepseekApiKey');
       deepseekApiKeyInput.value = '';
       deepseekApiKeyInput.placeholder = config.credentialStatus?.deepseekApiKey
         ? '已配置，留空保持不变'
         : 'DeepSeek API Key';
+      renderAiCredentialStatus('deepseek', config);
 
       // Sources
       document.getElementById('configZhihuKeywords').value = (config.sources?.zhihu?.keywords || []).join(', ');
@@ -2103,6 +2402,7 @@ class AdminServer {
         document.getElementById('config').value = JSON.stringify(data, null, 2);
         document.getElementById(input).value = '';
         await loadUsers();
+        updateOverview(data);
         updatePlatformStatus(data);
 
         const platformNames = {
@@ -2111,7 +2411,7 @@ class AdminServer {
           'xiaohongshu': '小红书',
           'weibo': '微博'
         };
-        showToast(\`\${platformNames[platform] || platform} Cookie 保存成功\`);
+        showToast(\`\${platformNames[platform] || platform} Cookie 已保存，请验证登录\`);
       } catch (error) {
         console.error('Failed to save cookie:', error);
       }
@@ -2130,6 +2430,7 @@ class AdminServer {
         currentConfig = data;
         document.getElementById('config').value = JSON.stringify(data, null, 2);
         await loadUsers();
+        updateOverview(data);
         updatePlatformStatus(data);
 
         const platformNames = {
@@ -2138,10 +2439,100 @@ class AdminServer {
           'xiaohongshu': '小红书',
           'weibo': '微博'
         };
-        showToast(\`\${platformNames[platform] || platform} 登录成功，Cookie 已保存\`);
+        showToast(\`\${platformNames[platform] || platform} 登录成功，请验证登录\`);
       } catch (error) {
         console.error('Failed to launch login:', error);
         showToast('登录失败: ' + error.message, 'error');
+      }
+    }
+
+    async function validateAiCredential(kind) {
+      try {
+        const id = currentUserId;
+        currentConfig.credentialChecks ||= {};
+        currentConfig.credentialChecks[kind] = {
+          status: 'unknown',
+          message: '正在验证 API Key 是否可用。',
+          checkedAt: new Date().toISOString()
+        };
+        renderAiCredentialStatus(kind, currentConfig);
+
+        const result = await request(\`/api/users/\${encodeURIComponent(id)}/credentials/\${kind}/validate\`, {
+          method: 'POST'
+        });
+
+        currentConfig = result.config;
+        document.getElementById('config').value = JSON.stringify(currentConfig, null, 2);
+        loadConfigIntoForm(currentConfig);
+        await loadUsers();
+
+        const validation = result.validation || currentConfig.credentialChecks?.[kind];
+        if (validation?.status === 'valid') {
+          showToast(validation.message || 'API Key 可用');
+        } else {
+          showToast(validation?.message || 'API Key 不可用', 'error');
+        }
+      } catch (error) {
+        console.error('Failed to validate AI credential:', error);
+      }
+    }
+
+    async function clearCredential(kind) {
+      try {
+        const labels = {
+          embedding: '内容筛选 API Key',
+          deepseek: '内容创作 API Key'
+        };
+        if (!confirm(\`清空 \${labels[kind] || kind}？\`)) {
+          return;
+        }
+
+        await request(\`/api/users/\${encodeURIComponent(currentUserId)}/credentials/\${kind}\`, {
+          method: 'DELETE'
+        });
+        const data = await request(\`/api/users/\${encodeURIComponent(currentUserId)}\`);
+        currentConfig = data;
+        document.getElementById('config').value = JSON.stringify(data, null, 2);
+        loadConfigIntoForm(data);
+        await loadUsers();
+        showToast('已清空');
+      } catch (error) {
+        console.error('Failed to clear credential:', error);
+      }
+    }
+
+    async function validatePlatformCredential(platform) {
+      try {
+        const id = currentUserId;
+        currentConfig.credentialChecks ||= {};
+        currentConfig.credentialChecks[platform] = {
+          status: 'checking',
+          message: '正在验证登录态是否可用。',
+          checkedAt: new Date().toISOString()
+        };
+        updatePlatformStatus(currentConfig);
+        updateOverview(currentConfig);
+
+        const result = await request(\`/api/users/\${encodeURIComponent(id)}/credentials/\${platform}/validate\`, {
+          method: 'POST'
+        });
+
+        currentConfig = result.config;
+        document.getElementById('config').value = JSON.stringify(currentConfig, null, 2);
+        await loadUsers();
+        updateOverview(currentConfig);
+        updatePlatformStatus(currentConfig);
+
+        const validation = result.validation || currentConfig.credentialChecks?.[platform];
+        if (validation?.status === 'valid') {
+          showToast(validation.message || '登录态可用');
+        } else if (validation?.status === 'invalid') {
+          showToast(validation.message || '登录态失效', 'error');
+        } else {
+          showToast(validation?.message || '登录态未验证', 'error');
+        }
+      } catch (error) {
+        console.error('Failed to validate credential:', error);
       }
     }
 
@@ -2199,15 +2590,19 @@ class AdminServer {
 
     async function loadRecommendations() {
       try {
-        const [items, runs] = await Promise.all([
+        const sourceFilter = document.getElementById('contentSourceFilter')?.value || '';
+        const [items, runs, rawItems] = await Promise.all([
           request(\`/api/users/\${encodeURIComponent(currentUserId)}/recommendations?limit=30\`),
-          request(\`/api/runs?userId=\${encodeURIComponent(currentUserId)}&limit=1\`)
+          request(\`/api/runs?userId=\${encodeURIComponent(currentUserId)}&limit=1\`),
+          request(\`/api/users/\${encodeURIComponent(currentUserId)}/content?limit=50\${sourceFilter ? '&source=' + encodeURIComponent(sourceFilter) : ''}\`)
         ]);
         const latestRun = runs[0];
         latestRunStats = parseStats(latestRun?.stats_json);
         renderRunProgress(latestRun);
         document.getElementById('recommendationsList').innerHTML = renderRecommendations(items, latestRun);
+        document.getElementById('rawContentList').innerHTML = renderRawContent(rawItems);
         if (currentConfig) {
+          updateContentSourceFilter(currentConfig);
           updateOverview(currentConfig);
         }
 
@@ -2340,6 +2735,43 @@ class AdminServer {
             <div class="mt-4 flex flex-wrap gap-3 text-sm">
               \${item.url ? \`<a href="\${escapeHtml(item.url)}" target="_blank" rel="noreferrer" class="font-medium text-blue-700 hover:text-blue-900">查看原文</a>\` : ''}
               \${primaryDraft ? \`<button onclick="copyDraftText(\${Number(item.id)}, 0)" class="font-medium text-gray-700 hover:text-gray-950">复制首个草稿</button>\` : ''}
+            </div>
+          </article>
+        \`;
+      }).join('');
+    }
+
+    function renderRawContent(items) {
+      if (!items.length) {
+        return \`
+          <div class="rounded-lg border border-gray-200 bg-gray-50 p-5 text-center text-sm text-gray-600">
+            暂无已入库内容。验证登录只检查 Cookie，不会保存内容；点击“立即运行”后这里会显示抓取结果。
+          </div>
+        \`;
+      }
+
+      return items.map(item => {
+        const metrics = item.metrics || {};
+        const metricText = [
+          metrics.likes !== undefined ? \`赞 \${metrics.likes}\` : '',
+          metrics.comments !== undefined ? \`评 \${metrics.comments}\` : '',
+          metrics.shares !== undefined ? \`转 \${metrics.shares}\` : '',
+        ].filter(Boolean).join(' · ');
+
+        return \`
+          <article class="rounded-lg border border-gray-200 bg-white p-4">
+            <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <span class="rounded bg-gray-100 px-2 py-1 font-medium text-gray-700">\${sourceLabel(item.source)}</span>
+                  \${item.author ? \`<span>\${escapeHtml(item.author)}</span>\` : ''}
+                  \${metricText ? \`<span>\${escapeHtml(metricText)}</span>\` : ''}
+                  <span>\${formatTime(item.collectedAt)}</span>
+                </div>
+                <h4 class="mt-2 text-sm font-semibold text-gray-950">\${escapeHtml(item.title || '无标题')}</h4>
+                <p class="mt-2 text-sm leading-6 text-gray-700">\${escapeHtml(truncateText(item.content || '', 220))}</p>
+              </div>
+              \${item.url ? \`<a href="\${escapeHtml(item.url)}" target="_blank" rel="noreferrer" class="shrink-0 text-sm font-medium text-blue-700 hover:text-blue-900">原文</a>\` : ''}
             </div>
           </article>
         \`;

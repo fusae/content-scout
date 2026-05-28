@@ -35,7 +35,7 @@ async function testFilterEngine() {
 
   // 2. 获取或创建账号画像
   const accountHandle = process.env.X_ACCOUNT_HANDLE || 'example_creator';
-  let profile = await getOrCreateProfile(db, accountHandle);
+  const profile = await getOrCreateProfile(db, accountHandle);
 
   if (!profile) {
     logger.error('Failed to get or create profile');

@@ -100,6 +100,14 @@ export interface RuntimeCredentialRecord {
   updated_at?: string;
 }
 
+export interface RuntimeCredentialCheckRecord {
+  user_id: string;
+  platform: string;
+  status: 'unknown' | 'valid' | 'invalid';
+  message?: string;
+  checked_at?: string;
+}
+
 export interface RuntimeJobRecord {
   id?: number;
   user_id: string;
@@ -154,6 +162,18 @@ export class DatabaseManager {
       this.db.exec('ALTER TABLE recommendations ADD COLUMN user_id TEXT');
     }
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_recommendations_user_id ON recommendations(user_id, recommended_at)');
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS runtime_credential_checks (
+        user_id TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        status TEXT NOT NULL,
+        message TEXT,
+        checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, platform),
+        FOREIGN KEY (user_id) REFERENCES runtime_users(user_id) ON DELETE CASCADE
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_runtime_credential_checks_platform ON runtime_credential_checks(platform)');
   }
 
   /**
@@ -484,6 +504,28 @@ export class DatabaseManager {
   deleteRuntimeCredential(userId: string, credentialKey: string): void {
     const stmt = this.db.prepare('DELETE FROM runtime_credentials WHERE user_id = ? AND credential_key = ?');
     stmt.run(userId, credentialKey);
+  }
+
+  upsertRuntimeCredentialCheck(record: RuntimeCredentialCheckRecord): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO runtime_credential_checks (user_id, platform, status, message)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, platform) DO UPDATE SET
+        status = excluded.status,
+        message = excluded.message,
+        checked_at = CURRENT_TIMESTAMP
+    `);
+    stmt.run(record.user_id, record.platform, record.status, record.message || null);
+  }
+
+  getRuntimeCredentialChecks(userId: string): RuntimeCredentialCheckRecord[] {
+    const stmt = this.db.prepare('SELECT * FROM runtime_credential_checks WHERE user_id = ?');
+    return stmt.all(userId) as RuntimeCredentialCheckRecord[];
+  }
+
+  deleteRuntimeCredentialCheck(userId: string, platform: string): void {
+    const stmt = this.db.prepare('DELETE FROM runtime_credential_checks WHERE user_id = ? AND platform = ?');
+    stmt.run(userId, platform);
   }
 
   insertRuntimeJob(job: RuntimeJobRecord): number {

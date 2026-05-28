@@ -6,7 +6,6 @@ import { FeishuClient } from '../feishu/index.js';
 import { FilterEngine } from '../filter/index.js';
 import { DraftGenerator } from '../generator/index.js';
 import { ProfileManager } from '../profile/index.js';
-import { config } from '../config.js';
 import { sourceNames, UserRuntimeConfig } from '../types/runtime-config.js';
 import { logger } from '../utils/logger.js';
 import { classifyFailure } from '../utils/failure.js';
@@ -213,6 +212,26 @@ export class RuntimeTaskRunner {
     if (!profile) {
       profile = await profileManager.initializeProfile();
     }
+    if (!profile.interestVector || profile.interestVector.length === 0) {
+      if (aiConfig.embedding.apiKey) {
+        this.logStage(runLogId, progress, '画像', 'running', '账号画像缺少向量，正在自动补齐');
+        try {
+          await profileManager.refreshVector();
+          const refreshedProfile = await profileManager.getProfile();
+          if (!refreshedProfile) {
+            throw new Error('Profile does not exist after vector refresh');
+          }
+          profile = refreshedProfile;
+        } catch (error) {
+          logger.warn('Profile vector auto-refresh failed, continuing with degraded filtering', error as Error);
+          this.logStage(runLogId, progress, '画像', 'skipped', '画像向量补齐失败，后续筛选会降级', {
+            error: (error as Error).message,
+          });
+        }
+      } else {
+        this.logStage(runLogId, progress, '画像', 'skipped', '未配置内容筛选 API，跳过画像向量补齐');
+      }
+    }
 
     this.logStage(runLogId, progress, '筛选', 'running', '开始向量匹配和 AI 排序', {
       topK: 20,
@@ -231,6 +250,8 @@ export class RuntimeTaskRunner {
       ? classifyFailure(new Error(filterResult.stats.aiFallbackReason || 'DeepSeek ranking unavailable'), 'DeepSeek')
       : undefined;
     const filteringMessages = [embeddingFailure?.userMessage, aiRankFailure?.userMessage].filter(Boolean);
+    this.recordAiCredentialFailure(configForUser.userId, 'embedding', embeddingFailure);
+    this.recordAiCredentialFailure(configForUser.userId, 'deepseek', aiRankFailure);
     progress.filtering = {
       selected: filterResult.contents.length,
       finalCount: 5,
@@ -287,6 +308,7 @@ export class RuntimeTaskRunner {
     const draftFailure = draftResults.length === 0
       ? classifyFailure(draftGenerator.getLastError() || new Error('DeepSeek draft generation failed'), 'DeepSeek')
       : undefined;
+    this.recordAiCredentialFailure(configForUser.userId, 'deepseek', draftFailure);
     progress.drafts = {
       contents: filterResult.contents.length,
       batches: draftResults.length,
@@ -416,28 +438,38 @@ export class RuntimeTaskRunner {
   }
 
   private resolveAiConfig(configForUser: UserRuntimeConfig): UserRuntimeConfig['ai'] {
-    const allowEnvFallback = configForUser.userId === (process.env.USER_ID || 'local');
-    const fallback = allowEnvFallback
-      ? {
-        embedding: config.embedding,
-        deepseek: config.deepseek,
-      }
-      : {
-        embedding: { apiKey: '', baseURL: '', model: '' },
-        deepseek: { apiKey: '', baseURL: '' },
-      };
-
     return {
       embedding: {
-        apiKey: configForUser.ai.embedding.apiKey || fallback.embedding.apiKey,
-        baseURL: configForUser.ai.embedding.baseURL || fallback.embedding.baseURL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-        model: configForUser.ai.embedding.model || fallback.embedding.model || 'text-embedding-v4',
+        apiKey: configForUser.ai.embedding.apiKey,
+        baseURL: configForUser.ai.embedding.baseURL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        model: configForUser.ai.embedding.model || 'text-embedding-v4',
       },
       deepseek: {
-        apiKey: configForUser.ai.deepseek.apiKey || fallback.deepseek.apiKey,
-        baseURL: configForUser.ai.deepseek.baseURL || fallback.deepseek.baseURL || 'https://api.deepseek.com',
+        apiKey: configForUser.ai.deepseek.apiKey,
+        baseURL: configForUser.ai.deepseek.baseURL || 'https://api.deepseek.com',
       },
     };
+  }
+
+  private recordAiCredentialFailure(
+    userId: string,
+    platform: 'embedding' | 'deepseek',
+    failure: ReturnType<typeof classifyFailure> | undefined
+  ): void {
+    if (!failure) {
+      return;
+    }
+
+    if (failure.failureType !== 'api_unavailable' && failure.failureType !== 'api_quota') {
+      return;
+    }
+
+    this.db.upsertRuntimeCredentialCheck({
+      user_id: userId,
+      platform,
+      status: 'invalid',
+      message: failure.userMessage,
+    });
   }
 
   private formatAggregationStats(stats: Awaited<ReturnType<ContentAggregator['aggregateAll']>>): RuntimeTaskResult['aggregation'] {

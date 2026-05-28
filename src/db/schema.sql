@@ -96,6 +96,17 @@ CREATE TABLE IF NOT EXISTS runtime_credentials (
   FOREIGN KEY (user_id) REFERENCES runtime_users(user_id) ON DELETE CASCADE
 );
 
+-- SaaS/本地共用：平台登录态验证结果
+CREATE TABLE IF NOT EXISTS runtime_credential_checks (
+  user_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  status TEXT NOT NULL, -- unknown, valid, invalid
+  message TEXT,
+  checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, platform),
+  FOREIGN KEY (user_id) REFERENCES runtime_users(user_id) ON DELETE CASCADE
+);
+
 -- SaaS/本地共用：任务队列
 CREATE TABLE IF NOT EXISTS runtime_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,6 +145,7 @@ CREATE INDEX IF NOT EXISTS idx_recommendations_status ON recommendations(status)
 CREATE INDEX IF NOT EXISTS idx_feedback_log_recommendation_id ON feedback_log(recommendation_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_source_configs_source ON runtime_source_configs(source);
 CREATE INDEX IF NOT EXISTS idx_runtime_credentials_key ON runtime_credentials(credential_key);
+CREATE INDEX IF NOT EXISTS idx_runtime_credential_checks_platform ON runtime_credential_checks(platform);
 CREATE INDEX IF NOT EXISTS idx_runtime_jobs_status ON runtime_jobs(status, scheduled_for);
 CREATE INDEX IF NOT EXISTS idx_runtime_jobs_user_id ON runtime_jobs(user_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_run_logs_user_id ON runtime_run_logs(user_id, started_at);

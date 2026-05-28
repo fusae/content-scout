@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import puppeteer, { Browser } from 'puppeteer';
+import { localBrowserLaunchOptions } from '../utils/browser-launcher.js';
 
 type LocalBrowserPlatform = 'douyin' | 'xiaohongshu' | 'zhihu' | 'weibo';
 
@@ -23,16 +24,12 @@ export async function launchLocalBrowser(
   platform: LocalBrowserPlatform,
   userId?: string
 ): Promise<Browser> {
-  return puppeteer.launch({
-    headless: process.env.LOCAL_SCRAPER_HEADLESS === 'true',
-    userDataDir: getLocalBrowserProfileDir(platform, userId),
-    defaultViewport: { width: 1280, height: 900 },
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled',
-    ],
-  });
+  return puppeteer.launch(
+    localBrowserLaunchOptions(
+      getLocalBrowserProfileDir(platform, userId),
+      process.env.LOCAL_SCRAPER_HEADLESS === 'true'
+    )
+  );
 }
 
 function safeFileName(value: string): string {

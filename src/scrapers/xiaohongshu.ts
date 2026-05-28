@@ -191,7 +191,7 @@ export class XiaohongshuScraper extends BaseScraper {
 
     const response = await this.fetchSearchApi(keyword);
     if (response.success === false || response.code === -101) {
-      throw new RecoverableFailure('auth_required', '小红书登录态失效，需要重新登录', true, '重新登录');
+      return this.searchByBrowser(keyword);
     }
 
     const apiNotes = (response.data?.items || [])

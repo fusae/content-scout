@@ -185,18 +185,12 @@ export class ContentAggregator {
     try {
       logger.info(`Running scraper: ${source}`);
       const preflight = await scraper.preflight();
+      let preflightFailure: FailureInfo | undefined;
       if (!preflight.ok) {
-        failure = preflight.failure;
-        logger.warn(`Scraper ${source} preflight failed: ${failure?.userMessage || 'unknown failure'}`);
-        return {
-          source,
-          itemsCollected: 0,
-          itemsDeduped: 0,
-          itemsSaved: 0,
-          errors: 1,
-          duration: Date.now() - startTime,
-          ...failure,
-        };
+        preflightFailure = preflight.failure;
+        logger.warn(
+          `Scraper ${source} preflight failed, trying scrape anyway: ${preflightFailure?.userMessage || 'unknown failure'}`
+        );
       }
 
       // 执行爬取
@@ -210,8 +204,9 @@ export class ContentAggregator {
           itemsCollected: 0,
           itemsDeduped: 0,
           itemsSaved: 0,
-          errors: 0,
+          errors: preflightFailure ? 1 : 0,
           duration: Date.now() - startTime,
+          ...preflightFailure,
         };
       }
 

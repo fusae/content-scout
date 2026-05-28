@@ -63,7 +63,7 @@ interface TikTokDownloaderResponse {
 export class DouyinScraper extends BaseScraper {
   protected source = 'douyin';
   protected baseUrl = 'https://www.douyin.com';
-  protected healthCheckKeywords = ['_$jsvmprt', 'douyin', '抖音'];
+  protected healthCheckKeywords = [];
   private sourceConfig: DouyinSourceRuntimeConfig;
   private keywords: string[];
 
@@ -78,6 +78,10 @@ export class DouyinScraper extends BaseScraper {
       tiktokDownloaderToken: config.chineseSources.douyinTikTokDownloaderToken,
     };
     this.keywords = this.sourceConfig.keywords;
+  }
+
+  protected healthCheckUrl(): string {
+    return '';
   }
 
   async scrape(): Promise<ContentItem[]> {
@@ -251,11 +255,10 @@ export class DouyinScraper extends BaseScraper {
       const page = await browser.newPage();
       const responsePromise = this.waitForBrowserSearchResponse(page, keyword);
 
-      await page.goto(this.baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await page.waitForSelector('input', { timeout: 30000 });
-      await page.click('input');
-      await page.type('input', keyword, { delay: 50 });
-      await page.keyboard.press('Enter');
+      await page.goto(
+        `${this.baseUrl}/search/${encodeURIComponent(keyword)}?type=general`,
+        { waitUntil: 'domcontentloaded', timeout: 60000 }
+      );
 
       const response = await this.withTimeout(responsePromise, 30000, null);
       if (!response) {
@@ -307,7 +310,7 @@ export class DouyinScraper extends BaseScraper {
     resolve: (value: DouyinSearchResponse | null) => void
   ): Promise<void> {
     const url = response.url();
-    if (!url.includes('/aweme/v1/web/general/search/stream/') || !url.includes(encodedKeyword)) {
+    if (!this.isBrowserSearchResponseUrl(url, encodedKeyword)) {
       return;
     }
 
@@ -316,7 +319,40 @@ export class DouyinScraper extends BaseScraper {
     resolve(this.parseBrowserSearchResponse(text));
   }
 
+  private isBrowserSearchResponseUrl(url: string, encodedKeyword: string): boolean {
+    const isSearchApi =
+      url.includes('/aweme/v1/web/general/search/stream/') ||
+      url.includes('/aweme/v1/web/general/search/single/');
+    if (!isSearchApi) {
+      return false;
+    }
+
+    return url.includes(`keyword=${encodedKeyword}`) ||
+      url.includes(`keyword=${encodedKeyword.toLowerCase()}`) ||
+      url.includes(`keyword=${decodeURIComponent(encodedKeyword)}`);
+  }
+
   private parseBrowserSearchResponse(text: string): DouyinSearchResponse | null {
+    const direct = this.parseJsonObject(text);
+    if (direct) {
+      return direct;
+    }
+
+    const data: DouyinSearchData[] = [];
+    for (const line of text.split('\n')) {
+      const parsed = this.parseJsonObject(line);
+      if (parsed?.data) {
+        data.push(...parsed.data);
+      }
+      if (parsed?.aweme_list) {
+        data.push(...parsed.aweme_list.map((aweme) => ({ aweme_info: aweme })));
+      }
+    }
+
+    return data.length > 0 ? { status_code: 0, data } : null;
+  }
+
+  private parseJsonObject(text: string): DouyinSearchResponse | null {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
     if (start < 0 || end <= start) {
