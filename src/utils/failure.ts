@@ -1,5 +1,6 @@
 export type FailureType =
   | 'auth_required'
+  | 'captcha_required'
   | 'platform_unavailable'
   | 'platform_changed'
   | 'api_quota'
@@ -47,6 +48,15 @@ export function classifyFailure(error: unknown, source = ''): FailureInfo {
       userMessage: `${label}认证失败或配置错误，已降级继续运行`,
       recoverable: false,
       actionLabel: '检查 API Key',
+    };
+  }
+
+  if (/captcha|验证码|安全验证|滑块|风控|risk control|risk_control|type=216/.test(lower)) {
+    return {
+      failureType: 'captcha_required',
+      userMessage: `${label}触发验证码或风控，需要人工验证后重试`,
+      recoverable: true,
+      actionLabel: '处理验证',
     };
   }
 

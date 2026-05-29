@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
 import electronUpdater from 'electron-updater';
-import { spawn, type ChildProcess } from 'child_process';
+import { execFileSync, spawn, type ChildProcess } from 'child_process';
 import { createServer, get as httpGet } from 'http';
 import { createWriteStream, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -72,6 +72,7 @@ function runtimeEnv(port: number): NodeJS.ProcessEnv {
   const env = { ...process.env };
   env.ADMIN_HOST = '127.0.0.1';
   env.ADMIN_PORT = String(port);
+  applySystemProxyEnv(env);
 
   if (app.isPackaged) {
     const runtimeDir = join(app.getPath('userData'), 'runtime');
@@ -83,6 +84,59 @@ function runtimeEnv(port: number): NodeJS.ProcessEnv {
   }
 
   return env;
+}
+
+function applySystemProxyEnv(env: NodeJS.ProcessEnv): void {
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  const proxy = readMacSystemProxy();
+  if (!proxy) {
+    return;
+  }
+
+  env.http_proxy ||= proxy.httpProxy;
+  env.HTTP_PROXY ||= proxy.httpProxy;
+  env.https_proxy ||= proxy.httpsProxy;
+  env.HTTPS_PROXY ||= proxy.httpsProxy;
+  env.no_proxy ||= 'localhost,127.0.0.1';
+  env.NO_PROXY ||= env.no_proxy;
+}
+
+function readMacSystemProxy(): { httpProxy: string; httpsProxy: string } | null {
+  try {
+    const output = execFileSync('/usr/sbin/scutil', ['--proxy'], {
+      encoding: 'utf8',
+      timeout: 3000,
+    });
+    const values = Object.fromEntries(
+      output
+        .split('\n')
+        .map((line) => line.trim().match(/^([A-Z]+(?:Proxy|Port|Enable))\s+:\s+(.+)$/))
+        .filter((match): match is RegExpMatchArray => Boolean(match))
+        .map((match) => [match[1], match[2]])
+    );
+
+    const httpProxy = proxyUrl(values.HTTPEnable, values.HTTPProxy, values.HTTPPort, 'http');
+    const httpsProxy = proxyUrl(values.HTTPSEnable, values.HTTPSProxy, values.HTTPSPort, 'http');
+    const socksProxy = proxyUrl(values.SOCKSEnable, values.SOCKSProxy, values.SOCKSPort, 'socks5');
+    const fallback = httpProxy || socksProxy;
+    const secureFallback = httpsProxy || fallback;
+    return fallback && secureFallback
+      ? { httpProxy: fallback, httpsProxy: secureFallback }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function proxyUrl(enabled: string | undefined, host: string | undefined, port: string | undefined, scheme: string): string {
+  if (enabled !== '1' || !host || !port) {
+    return '';
+  }
+
+  return `${scheme}://${host}:${port}`;
 }
 
 function serverScriptPath(): string {

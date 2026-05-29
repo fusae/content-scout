@@ -1065,7 +1065,7 @@ class AdminServer {
 
             <!-- Overview Tab -->
             <div id="content-overview" class="tab-content">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div class="metric-card bg-blue-50 p-4">
                   <div class="text-sm text-blue-600 font-medium">已启用平台</div>
                   <div id="enabledSourcesCount" class="text-2xl font-bold text-blue-900 mt-1">0</div>
@@ -1078,6 +1078,10 @@ class AdminServer {
                   <div class="text-sm text-purple-600 font-medium">平台连接</div>
                   <div id="connectionCount" class="text-2xl font-bold text-purple-900 mt-1">0/2</div>
                 </div>
+                <div class="metric-card bg-amber-50 p-4">
+                  <div class="text-sm text-amber-700 font-medium">需要处理</div>
+                  <div id="attentionCount" class="text-2xl font-bold text-amber-900 mt-1">0</div>
+                </div>
               </div>
 
               <div class="mb-6">
@@ -1088,9 +1092,22 @@ class AdminServer {
                 <div id="platformHealthGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3"></div>
               </div>
 
+              <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="text-sm font-semibold text-gray-900">AI 健康状态</h3>
+                  <button onclick="diagnoseSystem()" class="text-xs font-medium text-blue-700 hover:text-blue-900">一键诊断</button>
+                </div>
+                <div id="aiHealthGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+              </div>
+
+              <div id="runOutcomeCard" class="mb-6 rounded-lg border border-gray-200 bg-white p-4"></div>
+
               <div class="flex space-x-3 mb-6">
                 <button onclick="runUser()" class="flex-1 btn-primary px-4 py-3 font-medium">
                   立即运行
+                </button>
+                <button onclick="diagnoseSystem()" class="flex-1 bg-gray-900 text-white px-4 py-3 rounded-md hover:bg-gray-800 transition font-medium">
+                  一键诊断
                 </button>
                 <button onclick="testPush()" class="flex-1 bg-green-600 text-white px-4 py-3 rounded-md hover:bg-green-700 transition font-medium">
                   测试飞书推送
@@ -1781,7 +1798,10 @@ class AdminServer {
         config.credentialStatus?.weiboCookie
       ].filter(Boolean).length;
       document.getElementById('connectionCount').textContent = \`\${connections}/4\`;
+      document.getElementById('attentionCount').textContent = String(attentionIssues(config).length);
       renderPlatformHealth(config);
+      renderAiHealth(config);
+      renderRunOutcome(config);
       document.getElementById('lastRunSummary').textContent = buildRunSummary(latestRunStats);
       notifyRecoverableFailures();
     }
@@ -1817,6 +1837,229 @@ class AdminServer {
           </div>
         \`;
       }).join('');
+    }
+
+    function renderAiHealth(config) {
+      const container = document.getElementById('aiHealthGrid');
+      if (!container) return;
+
+      const items = [
+        aiHealth('embedding', '内容筛选', '负责相似度匹配和画像向量'),
+        aiHealth('deepseek', '内容创作', '负责推荐精排和草稿生成'),
+      ];
+
+      container.innerHTML = items.map(item => \`
+        <div class="border \${item.border} \${item.bg} rounded-lg p-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full \${item.dot}"></span>
+                <span class="font-medium text-gray-900">\${item.label}</span>
+              </div>
+              <div class="mt-1 text-xs text-gray-500">\${item.description}</div>
+              <div class="mt-1 text-xs \${item.text}">\${item.message}</div>
+            </div>
+            <div class="flex shrink-0 gap-2">
+              \${item.canValidate ? \`<button onclick="validateAiCredential('\${item.kind}')" class="text-xs font-medium text-blue-700 hover:text-blue-900">验证</button>\` : ''}
+              <button onclick="switchTab('config')" class="text-xs font-medium text-gray-600 hover:text-gray-900">配置</button>
+            </div>
+          </div>
+        </div>
+      \`).join('');
+
+      function aiHealth(kind, label, description) {
+        const hasKey = kind === 'embedding'
+          ? Boolean(config.credentialStatus?.embeddingApiKey)
+          : Boolean(config.credentialStatus?.deepseekApiKey);
+        const check = credentialCheck(config, kind);
+        if (!hasKey) {
+          return {
+            kind,
+            label,
+            description,
+            dot: 'bg-yellow-500',
+            bg: 'bg-yellow-50',
+            border: 'border-yellow-100',
+            text: 'text-yellow-700',
+            message: '未配置，相关能力会降级',
+            canValidate: false,
+          };
+        }
+        if (check?.status === 'valid') {
+          return {
+            kind,
+            label,
+            description,
+            dot: 'bg-green-500',
+            bg: 'bg-green-50',
+            border: 'border-green-100',
+            text: 'text-green-700',
+            message: check.message || '已验证可用',
+            canValidate: true,
+          };
+        }
+        if (check?.status === 'invalid') {
+          return {
+            kind,
+            label,
+            description,
+            dot: 'bg-red-500',
+            bg: 'bg-red-50',
+            border: 'border-red-100',
+            text: 'text-red-700',
+            message: check.message || 'API Key 不可用',
+            canValidate: true,
+          };
+        }
+        return {
+          kind,
+          label,
+          description,
+          dot: 'bg-blue-500',
+          bg: 'bg-blue-50',
+          border: 'border-blue-100',
+          text: 'text-blue-700',
+          message: check?.message || '已保存，建议验证一次',
+          canValidate: true,
+        };
+      }
+    }
+
+    function renderRunOutcome(config) {
+      const panel = document.getElementById('runOutcomeCard');
+      if (!panel) return;
+
+      const hasRun = latestRunStats && Array.isArray(latestRunStats.aggregation);
+      const issues = attentionIssues(config);
+      if (!hasRun) {
+        panel.className = 'mb-6 rounded-lg border border-gray-200 bg-white p-4';
+        panel.innerHTML = \`
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div class="font-semibold text-gray-900">还没有运行结果</div>
+              <div class="mt-1 text-sm text-gray-600">点击“立即运行”后，这里会显示抓取数量、推荐数量、草稿数量和需要处理的问题。</div>
+            </div>
+            <button onclick="runUser()" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">立即运行</button>
+          </div>
+        \`;
+        return;
+      }
+
+      const titleClass = issues.length ? 'text-amber-900' : 'text-green-900';
+      const boxClass = issues.length ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50';
+      panel.className = \`mb-6 rounded-lg border \${boxClass} p-4\`;
+      panel.innerHTML = \`
+        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div class="font-semibold \${titleClass}">最近一次运行结果</div>
+            <div class="mt-1 text-sm text-gray-700">\${escapeHtml(buildRunSummary(latestRunStats))}</div>
+          </div>
+          <div class="flex shrink-0 gap-2">
+            <button onclick="switchTab('recommendations'); loadRecommendations()" class="rounded-md bg-white px-3 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">看推荐</button>
+            <button onclick="runUser()" class="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">重跑</button>
+          </div>
+        </div>
+        \${issues.length ? \`
+          <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+            \${issues.map(issue => \`
+              <div class="flex items-center justify-between gap-3 rounded-md bg-white/70 border border-white p-3 text-sm">
+                <span class="text-gray-800">\${escapeHtml(issue.message)}</span>
+                \${issue.action ? \`<button onclick="\${issue.action}" class="shrink-0 text-xs font-medium text-blue-700 hover:text-blue-900">\${issue.actionLabel}</button>\` : ''}
+              </div>
+            \`).join('')}
+          </div>
+        \` : ''}
+      \`;
+    }
+
+    function attentionIssues(config) {
+      const issues = [];
+      const seen = new Set();
+      const add = issue => {
+        const key = issue.key || issue.message;
+        if (seen.has(key)) return;
+        seen.add(key);
+        issues.push(issue);
+      };
+
+      platforms.forEach(platform => {
+        const enabled = Boolean(config.sources?.[platform.id]?.enabled);
+        if (!enabled) return;
+
+        if (platform.needsAuth === 'cookie') {
+          const hasAuth = Boolean(config.credentialStatus?.[\`\${platform.id}Cookie\`]);
+          const check = credentialCheck(config, platform.id);
+          if (!hasAuth) {
+            add({
+              key: \`\${platform.id}:missing-auth\`,
+              message: \`\${platform.name} 还没登录\`,
+              action: \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\`,
+              actionLabel: '去登录',
+            });
+          } else if (check?.status === 'invalid') {
+            add({
+              key: \`\${platform.id}:invalid-auth\`,
+              message: \`\${platform.name} 登录失效\`,
+              action: \`launchLogin('\${platform.id}')\`,
+              actionLabel: '重新登录',
+            });
+          } else if (check?.status !== 'valid') {
+            add({
+              key: \`\${platform.id}:unknown-auth\`,
+              message: \`\${platform.name} 登录态未验证\`,
+              action: \`validatePlatformCredential('\${platform.id}')\`,
+              actionLabel: '验证',
+            });
+          }
+        }
+      });
+
+      const aggregation = Array.isArray(latestRunStats.aggregation) ? latestRunStats.aggregation : [];
+      aggregation
+        .filter(item => Number(item.errors || 0) > 0)
+        .forEach(item => {
+          const platform = platforms.find(p => p.id === item.source);
+          const name = platform?.name || item.source;
+          const auth = item.failureType === 'auth_required';
+          const captcha = item.failureType === 'captcha_required';
+          add({
+            key: \`\${item.source}:run:\${item.failureType || 'failed'}\`,
+            message: item.userMessage || \`\${name} 最近一次抓取失败\`,
+            action: (auth || captcha) && platform?.needsAuth === 'cookie' ? \`launchLogin('\${item.source}')\` : 'runUser()',
+            actionLabel: auth ? '重新登录' : captcha ? '处理验证' : '重跑',
+          });
+        });
+
+      [
+        ['embedding', '内容筛选', config.credentialStatus?.embeddingApiKey],
+        ['deepseek', '内容创作', config.credentialStatus?.deepseekApiKey],
+      ].forEach(([kind, label, hasKey]) => {
+        const check = credentialCheck(config, kind);
+        if (!hasKey) {
+          add({
+            key: \`\${kind}:missing\`,
+            message: \`\${label} API Key 未配置\`,
+            action: "switchTab('config')",
+            actionLabel: '去配置',
+          });
+        } else if (check?.status === 'invalid') {
+          add({
+            key: \`\${kind}:invalid\`,
+            message: check.message || \`\${label} API Key 不可用\`,
+            action: \`validateAiCredential('\${kind}')\`,
+            actionLabel: '验证',
+          });
+        } else if (check?.status !== 'valid') {
+          add({
+            key: \`\${kind}:unknown\`,
+            message: \`\${label} API Key 未验证\`,
+            action: \`validateAiCredential('\${kind}')\`,
+            actionLabel: '验证',
+          });
+        }
+      });
+
+      return issues;
     }
 
     function platformHealth(platform, enabled, hasAuth, stat, check) {
@@ -1870,6 +2113,7 @@ class AdminServer {
       if (Number(stat.errors || 0) > 0) {
         const failureType = stat.failureType || '';
         const needsLogin = failureType === 'auth_required';
+        const needsCaptcha = failureType === 'captcha_required';
         const isPlatformChanged = failureType === 'platform_changed';
         return {
           dot: isPlatformChanged ? 'bg-yellow-500' : 'bg-red-500',
@@ -1877,10 +2121,8 @@ class AdminServer {
           border: isPlatformChanged ? 'border-yellow-100' : 'border-red-100',
           text: isPlatformChanged ? 'text-yellow-700' : 'text-red-700',
           message: stat.userMessage || (needsLogin ? '登录态失效，需要重新登录' : '抓取失败，稍后会自动重试'),
-          action: failureType === 'auth_required'
-            ? \`launchLogin('\${platform.id}')\`
-            : needsLogin ? \`switchTab('platforms'); selectPlatformCredential('\${platform.id}')\` : '',
-          actionLabel: stat.actionLabel || (failureType === 'auth_required' ? '重新登录' : '处理'),
+          action: needsLogin || needsCaptcha ? \`launchLogin('\${platform.id}')\` : '',
+          actionLabel: stat.actionLabel || (needsLogin ? '重新登录' : needsCaptcha ? '处理验证' : '处理'),
         };
       }
 
@@ -1924,12 +2166,12 @@ class AdminServer {
 
     function notifyRecoverableFailures() {
       const aggregation = Array.isArray(latestRunStats.aggregation) ? latestRunStats.aggregation : [];
-      const authFailures = aggregation.filter(item => item.failureType === 'auth_required');
-      if (!authFailures.length) return;
-      const key = authFailures.map(item => \`\${item.source}:\${item.userMessage}\`).join('|');
+      const userActionFailures = aggregation.filter(item => item.failureType === 'auth_required' || item.failureType === 'captcha_required');
+      if (!userActionFailures.length) return;
+      const key = userActionFailures.map(item => \`\${item.source}:\${item.userMessage}\`).join('|');
       if (key === lastRecoveryNoticeKey) return;
       lastRecoveryNoticeKey = key;
-      showToast(\`\${authFailures.map(item => item.source).join('、')} 登录态失效，请重新登录\`, 'error');
+      showToast(\`\${userActionFailures.map(item => item.source).join('、')} 需要处理登录或验证\`, 'error');
     }
 
     // Update platform status
@@ -2446,7 +2688,7 @@ class AdminServer {
       }
     }
 
-    async function validateAiCredential(kind) {
+    async function validateAiCredential(kind, silent = false) {
       try {
         const id = currentUserId;
         currentConfig.credentialChecks ||= {};
@@ -2467,10 +2709,12 @@ class AdminServer {
         await loadUsers();
 
         const validation = result.validation || currentConfig.credentialChecks?.[kind];
-        if (validation?.status === 'valid') {
-          showToast(validation.message || 'API Key 可用');
-        } else {
-          showToast(validation?.message || 'API Key 不可用', 'error');
+        if (!silent) {
+          if (validation?.status === 'valid') {
+            showToast(validation.message || 'API Key 可用');
+          } else {
+            showToast(validation?.message || 'API Key 不可用', 'error');
+          }
         }
       } catch (error) {
         console.error('Failed to validate AI credential:', error);
@@ -2501,7 +2745,7 @@ class AdminServer {
       }
     }
 
-    async function validatePlatformCredential(platform) {
+    async function validatePlatformCredential(platform, silent = false) {
       try {
         const id = currentUserId;
         currentConfig.credentialChecks ||= {};
@@ -2524,16 +2768,38 @@ class AdminServer {
         updatePlatformStatus(currentConfig);
 
         const validation = result.validation || currentConfig.credentialChecks?.[platform];
-        if (validation?.status === 'valid') {
-          showToast(validation.message || '登录态可用');
-        } else if (validation?.status === 'invalid') {
-          showToast(validation.message || '登录态失效', 'error');
-        } else {
-          showToast(validation?.message || '登录态未验证', 'error');
+        if (!silent) {
+          if (validation?.status === 'valid') {
+            showToast(validation.message || '登录态可用');
+          } else if (validation?.status === 'invalid') {
+            showToast(validation.message || '登录态失效', 'error');
+          } else {
+            showToast(validation?.message || '登录态未验证', 'error');
+          }
         }
       } catch (error) {
         console.error('Failed to validate credential:', error);
       }
+    }
+
+    async function diagnoseSystem() {
+      if (!currentConfig || !currentUserId) return;
+      showToast('开始诊断，请稍等');
+      const cookiePlatforms = platforms.filter(platform =>
+        platform.needsAuth === 'cookie' &&
+        currentConfig.sources?.[platform.id]?.enabled &&
+        currentConfig.credentialStatus?.[\`\${platform.id}Cookie\`]
+      );
+      for (const platform of cookiePlatforms) {
+        await validatePlatformCredential(platform.id, true);
+      }
+      if (currentConfig.credentialStatus?.embeddingApiKey) {
+        await validateAiCredential('embedding', true);
+      }
+      if (currentConfig.credentialStatus?.deepseekApiKey) {
+        await validateAiCredential('deepseek', true);
+      }
+      showToast('诊断完成');
     }
 
     // Run user

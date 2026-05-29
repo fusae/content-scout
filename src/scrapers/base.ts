@@ -31,7 +31,7 @@ export abstract class BaseScraper {
   constructor(rateLimiter: RateLimiter) {
     this.rateLimiter = rateLimiter;
     this.axiosInstance = axios.create({
-      timeout: 30000,
+      timeout: 15000,
       headers: {
         'User-Agent': this.getRandomUserAgent(),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -129,8 +129,8 @@ export abstract class BaseScraper {
         return response.data as T;
       },
       {
-        maxAttempts: 3,
-        initialDelay: 1000,
+        maxAttempts: 2,
+        initialDelay: 800,
         shouldRetry: (error: Error) => {
           return (
             retryStrategies.networkError(error) ||

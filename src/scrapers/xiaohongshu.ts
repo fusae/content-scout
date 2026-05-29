@@ -175,6 +175,19 @@ export class XiaohongshuScraper extends BaseScraper {
         throw error;
       }
       logger.warn(`Redbook Xiaohongshu search failed for "${keyword}": ${(error as Error).message}`);
+      if (this.isCaptchaFailure(error)) {
+        try {
+          return await this.searchByKeyword(keyword);
+        } catch (fallbackError) {
+          if (
+            fallbackError instanceof RecoverableFailure &&
+            fallbackError.failureType === 'platform_changed'
+          ) {
+            throw this.captchaFailure();
+          }
+          throw fallbackError;
+        }
+      }
       return this.searchByKeyword(keyword);
     }
   }
@@ -190,6 +203,10 @@ export class XiaohongshuScraper extends BaseScraper {
     }
 
     const response = await this.fetchSearchApi(keyword);
+    if (this.isCaptchaResponse(response)) {
+      return this.searchByBrowser(keyword);
+    }
+
     if (response.success === false || response.code === -101) {
       return this.searchByBrowser(keyword);
     }
@@ -222,13 +239,22 @@ export class XiaohongshuScraper extends BaseScraper {
 
       const response = await this.withTimeout(responsePromise, 30000, null);
       if (!response) {
-        const needsLogin = await page
-          .evaluate(() => /登录后查看搜索结果|手机号登录|扫码/.test(document.body.innerText || ''))
-          .catch(() => false);
+        const pageText = await page
+          .evaluate(() => document.body.innerText || '')
+          .catch(() => '');
+        const needsCaptcha = /验证码|安全验证|滑块|请完成验证|captcha|verify/i.test(pageText);
+        const needsLogin = /登录后查看搜索结果|手机号登录|扫码/.test(pageText);
+        if (needsCaptcha) {
+          throw this.captchaFailure();
+        }
         if (needsLogin) {
           throw new RecoverableFailure('auth_required', '小红书登录态失效，需要重新登录', true, '重新登录');
         }
-        throw new RecoverableFailure('platform_changed', '小红书搜索接口未返回结果，可能是反爬或页面改版', false, '等待适配');
+        throw new RecoverableFailure('platform_changed', '小红书搜索接口未返回结果，可能是页面改版', false, '等待适配');
+      }
+
+      if (this.isCaptchaResponse(response)) {
+        throw this.captchaFailure();
       }
 
       if (response.success === false || response.code === -101) {
@@ -249,6 +275,20 @@ export class XiaohongshuScraper extends BaseScraper {
     }
   }
 
+  private captchaFailure(): RecoverableFailure {
+    return new RecoverableFailure('captcha_required', '小红书触发验证码或风控，需要在登录窗口完成验证后重试', true, '处理验证');
+  }
+
+  private isCaptchaFailure(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error || '');
+    return /captcha|验证码|安全验证|滑块|风控|risk control|risk_control|type=216|verify/i.test(message);
+  }
+
+  private isCaptchaResponse(response: XiaohongshuSearchResponse): boolean {
+    const message = response.msg || '';
+    return response.code === 216 || /captcha|验证码|安全验证|滑块|风控|risk control|risk_control|type=216|verify/i.test(message);
+  }
+
   private waitForBrowserSearchResponse(page: Page): Promise<XiaohongshuSearchResponse | null> {
     return new Promise((resolve) => {
       const handler = (response: Awaited<ReturnType<Page['waitForResponse']>>) => {
@@ -266,7 +306,7 @@ export class XiaohongshuScraper extends BaseScraper {
     removeListener: () => void,
     resolve: (value: XiaohongshuSearchResponse | null) => void
   ): Promise<void> {
-    if (!response.url().includes('/api/sns/web/v1/search/notes')) {
+    if (!response.url().includes('/api/sns/web/v1/search/')) {
       return;
     }
 
