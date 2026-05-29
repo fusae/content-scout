@@ -27,7 +27,7 @@ export async function launchLocalBrowser(
   return puppeteer.launch(
     localBrowserLaunchOptions(
       getLocalBrowserProfileDir(platform, userId),
-      process.env.LOCAL_SCRAPER_HEADLESS === 'true'
+      process.env.LOCAL_SCRAPER_HEADLESS !== 'false'
     )
   );
 }

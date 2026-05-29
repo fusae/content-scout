@@ -1493,6 +1493,8 @@ class AdminServer {
     let knownUserIds = new Set();
     let latestRunStats = {};
     let lastRecoveryNoticeKey = '';
+    const autoRecoveryRunIds = new Set();
+    let autoRecoveryRunning = false;
     const tokenFromUrl = urlParams.get('token');
     const adminTokenKey = 'sparkAdminToken';
     const legacyAdminTokenKey = 'contentScoutAdminToken';
@@ -2682,9 +2684,11 @@ class AdminServer {
           'weibo': '微博'
         };
         showToast(\`\${platformNames[platform] || platform} 登录成功，请验证登录\`);
+        return true;
       } catch (error) {
         console.error('Failed to launch login:', error);
         showToast('登录失败: ' + error.message, 'error');
+        return false;
       }
     }
 
@@ -2803,14 +2807,16 @@ class AdminServer {
     }
 
     // Run user
-    async function runUser() {
+    async function runUser(options = {}) {
       try {
         const id = currentUserId;
         document.getElementById('status').textContent = '正在运行...';
         const result = await request(\`/api/users/\${encodeURIComponent(id)}/run\`, {method: 'POST'});
         document.getElementById('status').textContent = JSON.stringify(result, null, 2);
-        showToast('任务已提交');
-        switchTab('recommendations');
+        showToast(options.autoRetry ? '已重新提交抓取任务' : '任务已提交');
+        if (!options.keepTab) {
+          switchTab('recommendations');
+        }
         setTimeout(loadRecommendations, 500);
       } catch (error) {
         console.error('Failed to run user:', error);
@@ -2872,6 +2878,8 @@ class AdminServer {
           updateOverview(currentConfig);
         }
 
+        handleAutoRecovery(latestRun);
+
         if (recommendationsRefreshTimer) {
           clearTimeout(recommendationsRefreshTimer);
           recommendationsRefreshTimer = null;
@@ -2882,6 +2890,34 @@ class AdminServer {
         }
       } catch (error) {
         console.error('Failed to load recommendations:', error);
+      }
+    }
+
+    async function handleAutoRecovery(latestRun) {
+      if (!latestRun || latestRun.status === 'running' || autoRecoveryRunning) return;
+      if (autoRecoveryRunIds.has(latestRun.id)) return;
+
+      const aggregation = Array.isArray(latestRunStats.aggregation) ? latestRunStats.aggregation : [];
+      const failures = aggregation.filter(item =>
+        Number(item.errors || 0) > 0 &&
+        (item.failureType === 'auth_required' || item.failureType === 'captcha_required')
+      );
+      if (failures.length !== 1) return;
+
+      const failure = failures[0];
+      const platform = platforms.find(item => item.id === failure.source);
+      if (!platform || platform.needsAuth !== 'cookie') return;
+
+      autoRecoveryRunIds.add(latestRun.id);
+      autoRecoveryRunning = true;
+      try {
+        showToast(\`\${platform.name} 需要重新登录，完成后会自动重跑\`, 'error');
+        const loggedIn = await launchLogin(platform.id);
+        if (!loggedIn) return;
+        await validatePlatformCredential(platform.id, true);
+        await runUser({ autoRetry: true, keepTab: true });
+      } finally {
+        autoRecoveryRunning = false;
       }
     }
 
