@@ -230,12 +230,28 @@ class AdminServer {
         }
 
         try {
-          const cookies = await this.cookieHelper.launchLoginWindow(platform, { userId });
+          const body = await this.readJson(req);
+          const mode = body.mode === 'reauth' || body.mode === 'captcha' ? body.mode : 'normal';
+          const cookies = await this.cookieHelper.launchLoginWindow(platform, { userId, mode });
           const saved = this.saveCredential(userId, platform, { value: cookies });
           this.json(res, this.publicConfig(saved));
         } catch (error) {
           this.json(res, { error: (error as Error).message }, 500);
         }
+        return;
+      }
+
+      const sourceRecoveryMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/run\/sources$/);
+      if (sourceRecoveryMatch && method === 'POST') {
+        const body = await this.readJson(req);
+        const sources = this.stringArray(body.sources)
+          .filter((source) => sourceNames.includes(source as never));
+        if (sources.length === 0) {
+          this.json(res, { error: 'At least one source is required' }, 400);
+          return;
+        }
+        const jobId = this.queue.enqueue(sourceRecoveryMatch[1], 'source_recovery', { sources });
+        this.json(res, { ok: true, jobId, sources });
         return;
       }
 
@@ -1495,6 +1511,10 @@ class AdminServer {
     let lastRecoveryNoticeKey = '';
     const autoRecoveryRunIds = new Set();
     let autoRecoveryRunning = false;
+    let autoRecoveryAttempts = 0;
+    let latestRunId = null;
+    let watchedRunPreviousId = null;
+    let watchedRunDeadline = 0;
     const tokenFromUrl = urlParams.get('token');
     const adminTokenKey = 'sparkAdminToken';
     const legacyAdminTokenKey = 'contentScoutAdminToken';
@@ -2662,13 +2682,14 @@ class AdminServer {
     }
 
     // Launch login window
-    async function launchLogin(platform) {
+    async function launchLogin(platform, options = {}) {
       try {
         const id = currentUserId;
         showToast('正在打开登录窗口，请在浏览器中完成登录...', 'success');
 
         const data = await request(\`/api/users/\${encodeURIComponent(id)}/login/\${platform}\`, {
-          method: 'POST'
+          method: 'POST',
+          body: JSON.stringify({ mode: options.mode || 'normal' })
         });
 
         currentConfig = data;
@@ -2809,9 +2830,16 @@ class AdminServer {
     // Run user
     async function runUser(options = {}) {
       try {
+        if (!options.autoRetry) {
+          autoRecoveryAttempts = 0;
+        }
         const id = currentUserId;
         document.getElementById('status').textContent = '正在运行...';
+        const previousRuns = await request(\`/api/runs?userId=\${encodeURIComponent(id)}&limit=1\`);
+        latestRunId = previousRuns[0]?.id ?? latestRunId;
         const result = await request(\`/api/users/\${encodeURIComponent(id)}/run\`, {method: 'POST'});
+        watchedRunPreviousId = latestRunId;
+        watchedRunDeadline = Date.now() + 15 * 60 * 1000;
         document.getElementById('status').textContent = JSON.stringify(result, null, 2);
         showToast(options.autoRetry ? '已重新提交抓取任务' : '任务已提交');
         if (!options.keepTab) {
@@ -2820,6 +2848,28 @@ class AdminServer {
         setTimeout(loadRecommendations, 500);
       } catch (error) {
         console.error('Failed to run user:', error);
+      }
+    }
+
+    async function runSources(sources) {
+      try {
+        const uniqueSources = [...new Set(sources)].filter(Boolean);
+        if (uniqueSources.length === 0) return;
+        const id = currentUserId;
+        document.getElementById('status').textContent = '正在补抓失败平台...';
+        const previousRuns = await request(\`/api/runs?userId=\${encodeURIComponent(id)}&limit=1\`);
+        latestRunId = previousRuns[0]?.id ?? latestRunId;
+        const result = await request(\`/api/users/\${encodeURIComponent(id)}/run/sources\`, {
+          method: 'POST',
+          body: JSON.stringify({ sources: uniqueSources })
+        });
+        watchedRunPreviousId = latestRunId;
+        watchedRunDeadline = Date.now() + 15 * 60 * 1000;
+        document.getElementById('status').textContent = JSON.stringify(result, null, 2);
+        showToast(\`已提交补抓任务：\${uniqueSources.join('、')}\`);
+        setTimeout(loadRecommendations, 500);
+      } catch (error) {
+        console.error('Failed to recover sources:', error);
       }
     }
 
@@ -2869,6 +2919,13 @@ class AdminServer {
           request(\`/api/users/\${encodeURIComponent(currentUserId)}/content?limit=50\${sourceFilter ? '&source=' + encodeURIComponent(sourceFilter) : ''}\`)
         ]);
         const latestRun = runs[0];
+        const waitingForSubmittedRun = Date.now() < watchedRunDeadline &&
+          (!latestRun || String(latestRun.id) === String(watchedRunPreviousId));
+        const submittedRunCompleted = Date.now() < watchedRunDeadline &&
+          latestRun &&
+          String(latestRun.id) !== String(watchedRunPreviousId) &&
+          latestRun.status !== 'running';
+        latestRunId = latestRun?.id ?? latestRunId;
         latestRunStats = parseStats(latestRun?.stats_json);
         renderRunProgress(latestRun);
         document.getElementById('recommendationsList').innerHTML = renderRecommendations(items, latestRun);
@@ -2878,14 +2935,17 @@ class AdminServer {
           updateOverview(currentConfig);
         }
 
-        handleAutoRecovery(latestRun);
+        if (submittedRunCompleted) {
+          watchedRunDeadline = 0;
+          await handleAutoRecovery(latestRun);
+        }
 
         if (recommendationsRefreshTimer) {
           clearTimeout(recommendationsRefreshTimer);
           recommendationsRefreshTimer = null;
         }
         const visible = !document.getElementById('content-recommendations').classList.contains('hidden');
-        if (visible && latestRun?.status === 'running') {
+        if (visible && (waitingForSubmittedRun || latestRun?.status === 'running')) {
           recommendationsRefreshTimer = setTimeout(loadRecommendations, 3000);
         }
       } catch (error) {
@@ -2896,26 +2956,33 @@ class AdminServer {
     async function handleAutoRecovery(latestRun) {
       if (!latestRun || latestRun.status === 'running' || autoRecoveryRunning) return;
       if (autoRecoveryRunIds.has(latestRun.id)) return;
+      if (autoRecoveryAttempts >= 2) return;
 
       const aggregation = Array.isArray(latestRunStats.aggregation) ? latestRunStats.aggregation : [];
       const failures = aggregation.filter(item =>
         Number(item.errors || 0) > 0 &&
         (item.failureType === 'auth_required' || item.failureType === 'captcha_required')
       );
-      if (failures.length !== 1) return;
-
-      const failure = failures[0];
-      const platform = platforms.find(item => item.id === failure.source);
-      if (!platform || platform.needsAuth !== 'cookie') return;
+      if (failures.length === 0) return;
 
       autoRecoveryRunIds.add(latestRun.id);
       autoRecoveryRunning = true;
+      autoRecoveryAttempts += 1;
       try {
-        showToast(\`\${platform.name} 需要重新登录，完成后会自动重跑\`, 'error');
-        const loggedIn = await launchLogin(platform.id);
-        if (!loggedIn) return;
-        await validatePlatformCredential(platform.id, true);
-        await runUser({ autoRetry: true, keepTab: true });
+        const recoveredSources = [];
+        for (const failure of failures) {
+          const platform = platforms.find(item => item.id === failure.source);
+          if (!platform || platform.needsAuth !== 'cookie') continue;
+          const needsCaptcha = failure.failureType === 'captcha_required';
+          showToast(\`\${platform.name} \${needsCaptcha ? '需要完成验证' : '需要重新登录'}，处理后会自动重跑\`, 'error');
+          const loggedIn = await launchLogin(platform.id, { mode: needsCaptcha ? 'captcha' : 'reauth' });
+          if (!loggedIn) continue;
+          await validatePlatformCredential(platform.id, true);
+          recoveredSources.push(platform.id);
+        }
+        if (recoveredSources.length > 0) {
+          await runSources(recoveredSources);
+        }
       } finally {
         autoRecoveryRunning = false;
       }

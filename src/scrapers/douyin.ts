@@ -262,9 +262,18 @@ export class DouyinScraper extends BaseScraper {
 
       const response = await this.withTimeout(responsePromise, 30000, null);
       if (!response) {
-        const needsLogin = await page
-          .evaluate(() => /登录|扫码|手机号/.test(document.body.innerText || ''))
-          .catch(() => false);
+        const pageState = await page
+          .evaluate(() => ({
+            text: document.body.innerText || '',
+            hasCaptcha: Boolean(document.querySelector(
+              '[class*="captcha"], [class*="verify"], iframe[src*="captcha"], iframe[src*="verify"], iframe[src*="verifycenter"]'
+            )),
+          }))
+          .catch(() => ({ text: '', hasCaptcha: false }));
+        if (pageState.hasCaptcha || /验证码|安全验证|滑块|请完成验证|captcha|verify/i.test(pageState.text)) {
+          throw new RecoverableFailure('captcha_required', '抖音触发滑块验证码或风控，需要在登录窗口完成验证后重试', true, '处理验证');
+        }
+        const needsLogin = /登录|扫码|手机号/.test(pageState.text);
         if (needsLogin) {
           throw new RecoverableFailure('auth_required', '抖音登录态失效，需要重新登录', true, '重新登录');
         }

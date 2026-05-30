@@ -11,6 +11,7 @@ type BrowserCookie = Awaited<ReturnType<Page['cookies']>>[number];
 interface PlatformLoginConfig {
   label: string;
   url: string;
+  verificationUrl?: string;
   cookieUrls: string[];
   loggedInSelectors: string[];
 }
@@ -18,12 +19,14 @@ interface PlatformLoginConfig {
 interface LoginOptions {
   userId: string;
   timeoutMs?: number;
+  mode?: 'normal' | 'reauth' | 'captcha';
 }
 
 const PLATFORM_CONFIGS: Record<CookiePlatform, PlatformLoginConfig> = {
   douyin: {
     label: '抖音',
     url: 'https://www.douyin.com/',
+    verificationUrl: 'https://www.douyin.com/search/AI%E5%B7%A5%E5%85%B7?type=general',
     cookieUrls: [
       'https://www.douyin.com/',
       'https://douyin.com/',
@@ -97,16 +100,22 @@ export class CookieHelper {
 
     try {
       const page = await browser.newPage();
-      await page.goto(platformConfig.url, { waitUntil: 'domcontentloaded' });
+      if (options.mode === 'reauth') {
+        await this.clearPlatformCookies(page, platform);
+      }
+      const targetUrl = options.mode === 'captcha'
+        ? platformConfig.verificationUrl || platformConfig.url
+        : platformConfig.url;
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
 
       const currentCookies = await this.collectCookies(page, platform);
-      if (await this.hasLoginState(page, platform, currentCookies)) {
+      if (options.mode !== 'captcha' && await this.hasLoginState(page, platform, currentCookies)) {
         logger.info(`${platformConfig.label} existing login state found for user ${options.userId}`);
         return this.toCookieString(currentCookies);
       }
 
       logger.info(`Opened ${platformConfig.label} login window for user ${options.userId}`);
-      const cookies = await this.waitForLogin(page, browser, platform, options.timeoutMs);
+      const cookies = await this.waitForLogin(page, browser, platform, options.timeoutMs, options.mode);
       logger.info(`${platformConfig.label} login completed for user ${options.userId}`);
       return this.toCookieString(cookies);
     } finally {
@@ -119,10 +128,12 @@ export class CookieHelper {
     page: Page,
     browser: Browser,
     platform: CookiePlatform,
-    timeoutMs = 5 * 60 * 1000
+    timeoutMs = 5 * 60 * 1000,
+    mode: LoginOptions['mode'] = 'normal'
   ): Promise<BrowserCookie[]> {
     const startedAt = Date.now();
     let checkCount = 0;
+    let challengeSeen = false;
 
     while (Date.now() - startedAt < timeoutMs) {
       if (!browser.isConnected()) {
@@ -137,7 +148,10 @@ export class CookieHelper {
         logger.info(`[${platform} login check ${checkCount}] cookies: ${names}`);
       }
 
-      if (await this.hasLoginState(page, platform, cookies)) {
+      const challengeVisible = mode === 'captcha' && await this.hasCaptchaChallenge(page);
+      challengeSeen ||= challengeVisible;
+      const captchaWindowReady = mode !== 'captcha' || challengeSeen || Date.now() - startedAt >= 15_000;
+      if (!challengeVisible && captchaWindowReady && await this.hasLoginState(page, platform, cookies)) {
         return cookies;
       }
 
@@ -148,6 +162,27 @@ export class CookieHelper {
     const names = cookies.map((cookie) => `${cookie.name}(${cookie.value.length})`).join(', ');
     logger.error(`${platform} login timeout. Final cookies: ${names}`);
     throw new Error('Login timeout: user did not complete login within 5 minutes');
+  }
+
+  private async clearPlatformCookies(page: Page, platform: CookiePlatform): Promise<void> {
+    const cookies = await this.collectCookies(page, platform);
+    if (cookies.length === 0) {
+      return;
+    }
+
+    await page.deleteCookie(...cookies.map((cookie) => ({
+      name: cookie.name,
+      domain: cookie.domain,
+      path: cookie.path,
+    })));
+  }
+
+  private async hasCaptchaChallenge(page: Page): Promise<boolean> {
+    return page.evaluate(() => {
+      const text = document.body.innerText || '';
+      return /验证码|安全验证|滑块|请完成验证|captcha|verify/i.test(text) ||
+        Boolean(document.querySelector('[class*="captcha"], [class*="verify"], iframe[src*="captcha"], iframe[src*="verify"]'));
+    }).catch(() => false);
   }
 
   private async collectCookies(page: Page, platform: CookiePlatform): Promise<BrowserCookie[]> {

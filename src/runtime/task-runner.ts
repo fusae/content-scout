@@ -71,21 +71,42 @@ export class RuntimeTaskRunner {
   constructor(private db: DatabaseManager) {}
 
   async runDaily(configForUser: UserRuntimeConfig): Promise<RuntimeTaskResult> {
+    return this.runPipeline(configForUser, 'daily_run');
+  }
+
+  async runSourceRecovery(configForUser: UserRuntimeConfig, sources: string[]): Promise<RuntimeTaskResult> {
+    const enabledSources = sourceNames.filter((source) =>
+      sources.includes(source) && configForUser.sources[source].enabled
+    );
+    if (enabledSources.length === 0) {
+      throw new Error('No enabled sources to recover');
+    }
+
+    return this.runPipeline(configForUser, 'source_recovery', enabledSources);
+  }
+
+  private async runPipeline(
+    configForUser: UserRuntimeConfig,
+    jobType: 'daily_run' | 'source_recovery',
+    sources?: string[]
+  ): Promise<RuntimeTaskResult> {
     const progress: RuntimeTaskProgress = {
       stages: [],
       aggregation: [],
     };
     const runLogId = this.db.insertRuntimeRunLog({
       user_id: configForUser.userId,
-      job_type: 'daily_run',
+      job_type: jobType,
       status: 'running',
-      message: '准备运行',
+      message: jobType === 'source_recovery' ? '准备补抓失败平台' : '准备运行',
       stats_json: JSON.stringify(progress),
     });
-    this.logStage(runLogId, progress, '准备', 'running', '初始化运行环境');
+    this.logStage(runLogId, progress, '准备', 'running', jobType === 'source_recovery'
+      ? `准备补抓：${sources?.join('、')}`
+      : '初始化运行环境');
 
     try {
-      const result = await this.executeDaily(configForUser, runLogId, progress);
+      const result = await this.executeDaily(configForUser, runLogId, progress, sources);
       progress.result = result;
       const summary = this.buildSummary(progress, result);
       this.logStage(runLogId, progress, '完成', 'succeeded', summary, {
@@ -139,7 +160,8 @@ export class RuntimeTaskRunner {
   private async executeDaily(
     configForUser: UserRuntimeConfig,
     runLogId: number,
-    progress: RuntimeTaskProgress
+    progress: RuntimeTaskProgress,
+    sources?: string[]
   ): Promise<RuntimeTaskResult> {
     logger.info(`Runtime daily run started: ${configForUser.userId}`);
 
@@ -164,8 +186,8 @@ export class RuntimeTaskRunner {
     const filterEngine = new FilterEngine(embeddingClient, deepseekClient, this.db);
     const draftGenerator = new DraftGenerator(deepseekClient, 'deepseek-chat');
 
-    this.logStage(runLogId, progress, '抓取', 'running', '开始抓取所有已启用平台', {
-      sources: sourceNames.filter((source) => configForUser.sources[source].enabled),
+    this.logStage(runLogId, progress, '抓取', 'running', sources ? '开始补抓失败平台' : '开始抓取所有已启用平台', {
+      sources: sources || sourceNames.filter((source) => configForUser.sources[source].enabled),
     });
     const aggregator = new ContentAggregator(this.db, configForUser, (event) => {
       const stat = {
@@ -196,7 +218,9 @@ export class RuntimeTaskRunner {
         action: event.stats.actionLabel,
       });
     });
-    const aggregation = await aggregator.aggregateAll();
+    const aggregation = sources
+      ? await aggregator.aggregateFrom(sources)
+      : await aggregator.aggregateAll();
     progress.aggregation = this.formatAggregationStats(aggregation);
     const totalCollected = aggregation.reduce((sum, stat) => sum + stat.itemsCollected, 0);
     const totalDeduped = aggregation.reduce((sum, stat) => sum + stat.itemsDeduped, 0);

@@ -152,10 +152,11 @@ export class ContentAggregator {
       try {
         const stat = await this.runScraper(source, scraper);
         stats.push(stat);
+        this.onProgress?.({ source, stats: stat });
       } catch (error) {
         const failure = classifyFailure(error, source);
         logger.error(`Scraper ${source} failed:`, error as Error);
-        stats.push({
+        const stat = {
           source,
           itemsCollected: 0,
           itemsDeduped: 0,
@@ -163,7 +164,9 @@ export class ContentAggregator {
           errors: 1,
           duration: 0,
           ...failure,
-        });
+        };
+        stats.push(stat);
+        this.onProgress?.({ source, stats: stat });
       }
     }
 

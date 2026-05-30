@@ -61,6 +61,12 @@ export class RuntimeWorker {
       try {
         if (job.job_type === 'daily_run') {
           await this.taskRunner.runDaily(runtimeConfig);
+        } else if (job.job_type === 'source_recovery') {
+          const payload = job.payload_json ? JSON.parse(job.payload_json) as { sources?: unknown } : {};
+          const sources = Array.isArray(payload.sources)
+            ? payload.sources.filter((source): source is string => typeof source === 'string')
+            : [];
+          await this.taskRunner.runSourceRecovery(runtimeConfig, sources);
         } else if (job.job_type === 'test_push') {
           await this.taskRunner.sendTestPush(runtimeConfig);
         } else {

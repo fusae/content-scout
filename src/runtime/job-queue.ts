@@ -1,6 +1,6 @@
 import { DatabaseManager, RuntimeJobRecord } from '../db/index.js';
 
-export type RuntimeJobType = 'daily_run' | 'test_push';
+export type RuntimeJobType = 'daily_run' | 'source_recovery' | 'test_push';
 
 export class RuntimeJobQueue {
   constructor(private db: DatabaseManager) {}
